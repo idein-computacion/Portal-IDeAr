@@ -21,9 +21,12 @@ export default function DashboardRecibos() {
 
   return (
     <main style={{ padding: "1.5rem", fontFamily: "sans-serif" }}>
-      <header>
-        <h1>Portal IDeAr - Panel de Facturación</h1>
-        <p>Monitoreo de transacciones en tiempo real conectado a Firebase</p>
+      <header style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
+        <img src="/logo.png" alt="Logo IDeAr" style={{ width: "80px", height: "auto" }} />
+        <div>
+          <h1 style={{ margin: 0 }}>Portal IDeAr - Panel de Facturación</h1>
+          <p style={{ margin: 0, color: "#64748b" }}>Monitoreo de transacciones en tiempo real conectado a Firebase</p>
+        </div>
       </header>
 
       <section style={{ marginTop: "2rem" }}>

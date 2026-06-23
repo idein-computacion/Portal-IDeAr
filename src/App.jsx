@@ -482,8 +482,8 @@ function App() {
                     <header className="bg-gradient-to-r from-slate-900 to-brand-900 text-white shadow-xl no-print">
                         <div className="max-w-7xl mx-auto px-4 py-4 sm:px-6 lg:px-8 flex flex-col md:flex-row items-center justify-between gap-4">
                             <div className="flex items-center gap-4">
-                                <div className="w-12 h-12 rounded-full bg-brand-500 flex items-center justify-center text-white text-2xl font-bold shadow-md">
-                                    I
+                                <div className="w-24 h-auto flex items-center justify-center">
+                                    <img src="/logo.png" alt="Logo IDeAr" className="w-full h-auto object-contain drop-shadow-md" />
                                 </div>
                                 <div>
                                     <div className="flex items-center gap-2">
