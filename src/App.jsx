@@ -1,8 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { SEED_STUDENTS, SEED_PAYMENTS, SEED_ATTENDANCE, SEDES, NIVELES, METODOS_PAGO, PERIODOS } from './data/seedData';
-import { initializeApp } from 'firebase/app';
-import { getAuth, signInWithCustomToken, signInAnonymously } from 'firebase/auth';
-import { getFirestore, collection, getDocs, setDoc, doc, deleteDoc, onSnapshot } from 'firebase/firestore';
+import { rtdb } from './config/firebase';
+import { ref, set, get, remove, onValue, off } from 'firebase/database';
 import DashboardRecibos from './components/DashboardRecibos';
 
 function App() {
@@ -60,13 +59,8 @@ function App() {
             const [selectedStudentDetail, setSelectedStudentDetail] = useState(null);
             const [activeReceipt, setActiveReceipt] = useState(null);
 
-            // Configuración de Firebase
-            const [firebaseConfigStr, setFirebaseConfigStr] = useState("");
+            // Estado de conexión Firebase Realtime Database
             const [firebaseConnected, setFirebaseConnected] = useState(false);
-            const [db, setDb] = useState(null);
-            const [auth, setAuth] = useState(null);
-            const [user, setUser] = useState(null);
-            const [appId, setAppId] = useState("default-app-id");
 
             // --- NOTIFICACIONES PERSONALIZADAS ---
             const addNotification = (text, type = "success") => {
@@ -77,164 +71,100 @@ function App() {
                 }, 4000);
             };
 
-            // --- INICIALIZACIÓN DE DATOS (LOCALSTORAGE O SEED) ---
-            useEffect(() => {
-                const localStudents = localStorage.getItem("idear_students");
-                const localPayments = localStorage.getItem("idear_payments");
-                const localAttendance = localStorage.getItem("idear_attendance");
-                const localAranceles = localStorage.getItem("idear_aranceles");
-                const localFirebase = localStorage.getItem("idear_firebase_config");
+            // --- HELPER: Convierte un objeto de Firebase a array ---
+            const fbObjectToArray = (data) => {
+                if (!data) return [];
+                return Object.keys(data).map(key => ({ id: key, ...data[key] }));
+            };
 
-                if (localStudents) setStudents(JSON.parse(localStudents));
-                else {
-                    setStudents(SEED_STUDENTS);
-                    localStorage.setItem("idear_students", JSON.stringify(SEED_STUDENTS));
-                }
-
-                if (localPayments) setPayments(JSON.parse(localPayments));
-                else {
-                    setPayments(SEED_PAYMENTS);
-                    localStorage.setItem("idear_payments", JSON.stringify(SEED_PAYMENTS));
-                }
-
-                if (localAttendance) setAttendance(JSON.parse(localAttendance));
-                else {
-                    setAttendance(SEED_ATTENDANCE);
-                    localStorage.setItem("idear_attendance", JSON.stringify(SEED_ATTENDANCE));
-                }
-
-                if (localAranceles) setAranceles(JSON.parse(localAranceles));
-
-                if (localFirebase) {
-                    setFirebaseConfigStr(localFirebase);
-                } else if (typeof __firebase_config !== "undefined" && __firebase_config) {
-                    setFirebaseConfigStr(JSON.stringify(__firebase_config, null, 2));
-                }
-            }, []);
-
-            // --- GUARDAR LOCALMENTE SI CAMBIA (COMO BACKUP O MODO LOCAL) ---
+            // --- GUARDAR LOCALMENTE SI CAMBIA (COMO BACKUP) ---
             const saveLocal = (key, data) => {
                 localStorage.setItem(key, JSON.stringify(data));
             };
 
-            // --- CONEXIÓN / DESCONEXIÓN FIREBASE (REGLAS 1, 2, 3) ---
-            const connectFirebase = async (customConfig = null) => {
-                setLoading(true);
-                try {
-                    const configToUse = customConfig || firebaseConfigStr;
-                    if (!configToUse) {
-                        addNotification("Por favor ingresa una configuración de Firebase válida", "error");
-                        setLoading(false);
-                        return;
-                    }
-
-                    const configObj = JSON.parse(configToUse);
-                    const currentAppId = typeof __app_id !== 'undefined' ? __app_id : 'idear-portal';
-                    setAppId(currentAppId);
-
-                    // Firebase SDK ya importado al inicio del archivo
-                    
-                    const app = initializeApp(configObj, "IDeArApp");
-                    const firebaseAuth = getAuth(app);
-                    const firestoreDb = getFirestore(app);
-
-                    setDb(firestoreDb);
-                    setAuth(firebaseAuth);
-
-                    // Regla 3: Autenticación ANTES de consultas
-                    let loggedUser = null;
-                    if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                        const credential = await signInWithCustomToken(firebaseAuth, __initial_auth_token);
-                        loggedUser = credential.user;
-                    } else {
-                        const credential = await signInAnonymously(firebaseAuth);
-                        loggedUser = credential.user;
-                    }
-
-                    setUser(loggedUser);
-                    setFirebaseConnected(true);
-                    localStorage.setItem("idear_firebase_config", configToUse);
-                    addNotification("Conectado con éxito a la nube de Firebase", "success");
-
-                    // Sincronizar colecciones (Regla 1: Rutas estrictas)
-                    // Para simplificar, descargamos y fusionamos con el local
-                    syncFirebaseData(firestoreDb, currentAppId);
-
-                } catch (error) {
-                    console.error("Error connecting to Firebase:", error);
-                    addNotification("Error de conexión Firebase: " + error.message, "error");
-                } finally {
-                    setLoading(false);
-                }
-            };
-
-            const syncFirebaseData = async (firestoreDb, currentAppId) => {
-                try {
-                    // Cargar Alumnos
-                    const studentsRef = collection(firestoreDb, 'artifacts', currentAppId, 'public', 'data', 'students');
-                    const studentsSnap = await getDocs(studentsRef);
-                    let dbStudents = [];
-                    studentsSnap.forEach(doc => {
-                        dbStudents.push({ id: doc.id, ...doc.data() });
-                    });
-
-                    if (dbStudents.length > 0) {
-                        setStudents(dbStudents);
-                        saveLocal("idear_students", dbStudents);
-                    } else {
-                        // Si Firebase está vacío, sembramos con nuestro local
-                        for (const std of students) {
-                            await setDoc(doc(firestoreDb, 'artifacts', currentAppId, 'public', 'data', 'students', std.id), std);
-                        }
-                    }
-
-                    // Cargar Pagos
-                    const paymentsRef = collection(firestoreDb, 'artifacts', currentAppId, 'public', 'data', 'payments');
-                    const paymentsSnap = await getDocs(paymentsRef);
-                    let dbPayments = [];
-                    paymentsSnap.forEach(doc => {
-                        dbPayments.push({ id: doc.id, ...doc.data() });
-                    });
-
-                    if (dbPayments.length > 0) {
-                        setPayments(dbPayments);
-                        saveLocal("idear_payments", dbPayments);
-                    } else {
-                        for (const pay of payments) {
-                            await setDoc(doc(firestoreDb, 'artifacts', currentAppId, 'public', 'data', 'payments', pay.id), pay);
-                        }
-                    }
-
-                    // Cargar Asistencias
-                    const attRef = collection(firestoreDb, 'artifacts', currentAppId, 'public', 'data', 'attendance');
-                    const attSnap = await getDocs(attRef);
-                    let dbAtt = [];
-                    attSnap.forEach(doc => {
-                        dbAtt.push({ id: doc.id, ...doc.data() });
-                    });
-
-                    if (dbAtt.length > 0) {
-                        setAttendance(dbAtt);
-                        saveLocal("idear_attendance", dbAtt);
-                    } else {
-                        for (const attItem of attendance) {
-                            await setDoc(doc(firestoreDb, 'artifacts', currentAppId, 'public', 'data', 'attendance', attItem.id), attItem);
-                        }
-                    }
-
-                    addNotification("Datos sincronizados con la nube", "success");
-                } catch (err) {
-                    console.error("Error syncing:", err);
-                    addNotification("Error sincronizando colecciones: " + err.message, "error");
-                }
-            };
-
-            // Intentar conectar automáticamente si ya está guardado
+            // --- CONEXIÓN A FIREBASE REALTIME DATABASE ---
+            // Suscripciones en tiempo real: cuando cambian los datos en Firebase,
+            // se actualizan automáticamente en la UI.
             useEffect(() => {
-                const savedConfig = localStorage.getItem("idear_firebase_config");
-                if (savedConfig) {
-                    connectFirebase(savedConfig);
-                }
+                setLoading(true);
+
+                const alumnosRef = ref(rtdb, 'alumnos');
+                const pagosRef = ref(rtdb, 'pagos');
+                const asistenciasRef = ref(rtdb, 'asistencias');
+
+                // Listener de Alumnos
+                const unsubAlumnos = onValue(alumnosRef, (snapshot) => {
+                    const data = snapshot.val();
+                    if (data) {
+                        const lista = fbObjectToArray(data);
+                        setStudents(lista);
+                        saveLocal('idear_students', lista);
+                    } else {
+                        // Si Firebase está vacío, sembramos con los datos iniciales
+                        const seedObj = {};
+                        SEED_STUDENTS.forEach(s => { seedObj[s.id] = s; });
+                        set(alumnosRef, seedObj);
+                    }
+                }, (error) => {
+                    console.error('Error leyendo alumnos:', error);
+                    // Fallback a localStorage
+                    const local = localStorage.getItem('idear_students');
+                    if (local) setStudents(JSON.parse(local));
+                    else setStudents(SEED_STUDENTS);
+                });
+
+                // Listener de Pagos
+                const unsubPagos = onValue(pagosRef, (snapshot) => {
+                    const data = snapshot.val();
+                    if (data) {
+                        const lista = fbObjectToArray(data);
+                        setPayments(lista);
+                        saveLocal('idear_payments', lista);
+                    } else {
+                        const seedObj = {};
+                        SEED_PAYMENTS.forEach(p => { seedObj[p.id] = p; });
+                        set(pagosRef, seedObj);
+                    }
+                }, (error) => {
+                    console.error('Error leyendo pagos:', error);
+                    const local = localStorage.getItem('idear_payments');
+                    if (local) setPayments(JSON.parse(local));
+                    else setPayments(SEED_PAYMENTS);
+                });
+
+                // Listener de Asistencias
+                const unsubAsistencias = onValue(asistenciasRef, (snapshot) => {
+                    const data = snapshot.val();
+                    if (data) {
+                        const lista = fbObjectToArray(data);
+                        setAttendance(lista);
+                        saveLocal('idear_attendance', lista);
+                    } else {
+                        const seedObj = {};
+                        SEED_ATTENDANCE.forEach(a => { seedObj[a.id] = a; });
+                        set(asistenciasRef, seedObj);
+                    }
+                }, (error) => {
+                    console.error('Error leyendo asistencias:', error);
+                    const local = localStorage.getItem('idear_attendance');
+                    if (local) setAttendance(JSON.parse(local));
+                    else setAttendance(SEED_ATTENDANCE);
+                });
+
+                // Cargar aranceles locales
+                const localAranceles = localStorage.getItem('idear_aranceles');
+                if (localAranceles) setAranceles(JSON.parse(localAranceles));
+
+                setFirebaseConnected(true);
+                setLoading(false);
+                addNotification('Conectado a Firebase Realtime Database', 'success');
+
+                // Cleanup: desuscribirse al desmontar
+                return () => {
+                    off(alumnosRef);
+                    off(pagosRef);
+                    off(asistenciasRef);
+                };
             }, []);
 
             // --- ACCIONES DE ALUMNOS ---
@@ -275,13 +205,11 @@ function App() {
                 setStudents(updatedStudents);
                 saveLocal("idear_students", updatedStudents);
 
-                // Guardar en Firebase si está conectado
-                if (firebaseConnected && db) {
-                    try {
-                        await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'students', studentData.id), studentData);
-                    } catch (err) {
-                        addNotification("Error al guardar en nube: " + err.message, "error");
-                    }
+                // Guardar en Firebase Realtime Database
+                try {
+                    await set(ref(rtdb, `alumnos/${studentData.id}`), studentData);
+                } catch (err) {
+                    addNotification("Error al guardar en nube: " + err.message, "error");
                 }
 
                 setShowStudentModal(false);
@@ -289,16 +217,10 @@ function App() {
             };
 
             const handleDeleteStudent = async (id) => {
-                const updated = students.filter(s => s.id !== id);
-                setStudents(updated);
-                saveLocal("idear_students", updated);
-
-                if (firebaseConnected && db) {
-                    try {
-                        await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'students', id));
-                    } catch (err) {
-                        addNotification("Error al eliminar de nube", "error");
-                    }
+                try {
+                    await remove(ref(rtdb, `alumnos/${id}`));
+                } catch (err) {
+                    addNotification("Error al eliminar de nube", "error");
                 }
                 addNotification("Alumno eliminado correctamente", "info");
                 if (selectedStudentDetail?.id === id) setSelectedStudentDetail(null);
@@ -356,17 +278,18 @@ function App() {
                     savedList.push(attRecord);
                 }
 
-                setAttendance(updatedAttendance);
-                saveLocal("idear_attendance", updatedAttendance);
-
-                if (firebaseConnected && db) {
-                    try {
-                        for (const rec of savedList) {
-                            await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'attendance', rec.id), rec);
-                        }
-                    } catch (err) {
-                        addNotification("Error guardando asistencias en Firebase", "error");
+                // Guardar en Firebase Realtime Database
+                try {
+                    const updates = {};
+                    for (const rec of savedList) {
+                        updates[`asistencias/${rec.id}`] = rec;
                     }
+                    // Usamos set individualmente para cada registro
+                    for (const rec of savedList) {
+                        await set(ref(rtdb, `asistencias/${rec.id}`), rec);
+                    }
+                } catch (err) {
+                    addNotification("Error guardando asistencias en Firebase", "error");
                 }
 
                 addNotification(`Asistencias de hoy guardadas para ${studentsForAttendance.length} alumnos`, "success");
@@ -422,12 +345,11 @@ function App() {
                 setPayments(updated);
                 saveLocal("idear_payments", updated);
 
-                if (firebaseConnected && db) {
-                    try {
-                        await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'payments', paymentId), paymentRecord);
-                    } catch (err) {
-                        addNotification("Error guardando pago en Firebase", "error");
-                    }
+                // Guardar en Firebase Realtime Database
+                try {
+                    await set(ref(rtdb, `pagos/${paymentId}`), paymentRecord);
+                } catch (err) {
+                    addNotification("Error guardando pago en Firebase", "error");
                 }
 
                 addNotification(`Pago registrado para ${selectedStudent.name}`, "success");
@@ -444,16 +366,10 @@ function App() {
             };
 
             const handleDeletePayment = async (id) => {
-                const updated = payments.filter(p => p.id !== id);
-                setPayments(updated);
-                saveLocal("idear_payments", updated);
-
-                if (firebaseConnected && db) {
-                    try {
-                        await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'payments', id));
-                    } catch (err) {
-                        addNotification("Error al eliminar pago en nube", "error");
-                    }
+                try {
+                    await remove(ref(rtdb, `pagos/${id}`));
+                } catch (err) {
+                    addNotification("Error al eliminar pago en nube", "error");
                 }
                 addNotification("Pago eliminado", "info");
             };
