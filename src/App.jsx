@@ -381,6 +381,10 @@ function App() {
                     const matchesSede = studentSedeFilter === "Todas" || s.sede === studentSedeFilter;
                     const matchesNivel = studentNivelFilter === "Todos" || s.level === studentNivelFilter;
                     return matchesSearch && matchesSede && matchesNivel;
+                }).sort((a, b) => {
+                    if (a.level !== b.level) return (a.level || '').localeCompare(b.level || '');
+                    if (a.taller !== b.taller) return (a.taller || '').localeCompare(b.taller || '');
+                    return (a.sede || '').localeCompare(b.sede || '');
                 });
             }, [students, studentSearch, studentSedeFilter, studentNivelFilter]);
 
