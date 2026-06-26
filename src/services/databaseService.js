@@ -27,7 +27,7 @@ export const databaseService = {
       const listaFormateada = Object.keys(data).map(key => ({
         id: key,
         ...data[key]
-      }));
+      })).sort((a, b) => (b.fecha_emision || '').localeCompare(a.fecha_emision || '') || (b.id || '').localeCompare(a.id || ''));
       callback(listaFormateada);
     });
 
