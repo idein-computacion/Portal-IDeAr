@@ -733,10 +733,49 @@ function App() {
                     const matchesNivel = studentNivelFilter === "Todos" || s.level === studentNivelFilter;
                     return matchesSearch && matchesNivel;
                 }).sort((a, b) => {
+                    if (a.active !== b.active) return a.active ? -1 : 1;
                     if (a.level !== b.level) return (a.level || '').localeCompare(b.level || '');
                     return (a.name || '').localeCompare(b.name || '');
                 });
             }, [students, studentSearch, globalSede, studentNivelFilter]);
+
+            // --- CÁLCULO DE DEUDA POR ALUMNO ---
+            const studentDebts = useMemo(() => {
+                const debts = {};
+                const currentMonthIdx = new Date().getMonth(); // 0=Jan, 1=Feb, 2=Mar, 3=Apr, 4=May, 5=Jun
+                
+                students.forEach(student => {
+                    let startMonthIdx = 2; // Default a Marzo (idx=2)
+                    if (student.fecha_inicio) {
+                        const startMonthStr = student.fecha_inicio.split('-')[1];
+                        if (startMonthStr) {
+                            startMonthIdx = parseInt(startMonthStr, 10) - 1;
+                            startMonthIdx = Math.max(2, startMonthIdx); // No cobrar anterior a marzo
+                        }
+                    }
+
+                    let monthsToPay = 0;
+                    if (currentMonthIdx >= startMonthIdx) {
+                        monthsToPay = currentMonthIdx - startMonthIdx + 1;
+                    } else {
+                        monthsToPay = 1; // Mínimo se le cobra el mes de inicio
+                    }
+
+                    let levelConfig = configLevels.find(c => c.curso_nivel === student.level) 
+                                      || configLevels.find(c => c.curso_nivel === student.taller);
+                    
+                    const inscripcion = levelConfig?.inscripcion || 20000;
+                    const cuota = levelConfig?.cuota || 25000;
+                    
+                    const totalExpected = inscripcion + (cuota * monthsToPay);
+                    
+                    const studentPayments = payments.filter(p => p.studentId === student.id && p.period !== 'Examen');
+                    const totalPaid = studentPayments.reduce((sum, p) => sum + p.amount, 0);
+                    
+                    debts[student.id] = Math.max(0, totalExpected - totalPaid);
+                });
+                return debts;
+            }, [students, payments, configLevels]);
             // --- FILTROS DE PAGOS COMPUTADOS ---
             const filteredPayments = useMemo(() => {
                 let basePayments = activePayments;
@@ -818,34 +857,29 @@ function App() {
 
                 const paidPeriods = [];
                 sPayments.forEach(p => {
-                    if (p.period && !paidPeriods.includes(p.period)) {
+                    if (p.period && p.period !== "Matrícula" && p.period !== "Examen" && !paidPeriods.includes(p.period)) {
                         paidPeriods.push(p.period);
-                    }
-                    
-                    // Si el recibo tiene inscripción y primera cuota y cubre el monto total
-                    const conceptLower = (p.concept || "").toLowerCase();
-                    const isCombinedPayment = conceptLower.includes("inscrip") && 
-                        (conceptLower.includes("1ra cuota") || 
-                         conceptLower.includes("1° cuota") || 
-                         conceptLower.includes("1ra. cuota") || 
-                         conceptLower.includes("primera cuota") || 
-                         conceptLower.includes("1ª cuota"));
-                         
-                    if (isCombinedPayment && p.amount >= sumaTotal) {
-                        if (p.date && p.date.includes("-")) {
-                            const parts = p.date.split("-");
-                            const monthNum = parseInt(parts[1], 10);
-                            if (monthNum >= 1 && monthNum <= 12) {
-                                const dateMonth = MONTHS_ORDER[monthNum - 1];
-                                if (!paidPeriods.includes(dateMonth)) {
-                                    paidPeriods.push(dateMonth);
-                                }
-                            }
-                        }
                     }
                 });
 
-                const missingPeriods = ["Marzo", "Abril", "Mayo", "Junio"].filter(p => !paidPeriods.includes(p));
+                let startMonthIdx = 2; // Marzo
+                if (selectedStudentDetail.fecha_inicio) {
+                    const startMonthStr = selectedStudentDetail.fecha_inicio.split('-')[1];
+                    if (startMonthStr) {
+                        startMonthIdx = parseInt(startMonthStr, 10) - 1;
+                        startMonthIdx = Math.max(2, startMonthIdx);
+                    }
+                }
+                const currentMonthIdx = new Date().getMonth();
+                const expectedPeriods = [];
+                const endMonth = Math.max(startMonthIdx, currentMonthIdx);
+                for (let i = startMonthIdx; i <= endMonth; i++) {
+                    if (MONTHS_ORDER[i]) {
+                        expectedPeriods.push(MONTHS_ORDER[i]);
+                    }
+                }
+
+                const missingPeriods = expectedPeriods.filter(p => !paidPeriods.includes(p));
 
                 return {
                     payments: sPayments,
@@ -855,7 +889,10 @@ function App() {
                     absents,
                     attendanceRate,
                     missingPeriods,
-                    paidPeriods
+                    paidPeriods,
+                    valorCuota,
+                    valorInscripcion,
+                    expectedPeriods
                 };
             }, [selectedStudentDetail, activePayments, attendance, configLevels]);
 
@@ -1701,6 +1738,7 @@ function App() {
                                                     <th className="py-3 px-4">Sede / Nivel</th>
                                                     <th className="py-3 px-4">Contacto</th>
                                                     <th className="py-3 px-4 text-center">Estado</th>
+                                                    <th className="py-3 px-4 text-right">Saldo Deudor</th>
                                                     <th className="py-3 px-4 text-center">Acciones</th>
                                                 </tr>
                                             </thead>
@@ -1734,6 +1772,11 @@ function App() {
                                                                     student.active ? 'bg-orange-50 text-orange-700' : 'bg-rose-50 text-rose-700'
                                                                 }`}>
                                                                     {student.active ? 'Activo' : 'Baja'}
+                                                                </span>
+                                                            </td>
+                                                            <td className="py-3.5 px-4 text-right">
+                                                                <span className={`font-bold ${studentDebts[student.id] > 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
+                                                                    ${studentDebts[student.id]?.toLocaleString() || 0}
                                                                 </span>
                                                             </td>
                                                             <td className="py-3.5 px-4 flex items-center justify-center gap-2">
@@ -1967,6 +2010,11 @@ function App() {
                                         <div>
                                             <h3 className="text-xl font-bold text-stone-800">{selectedStudentDetail.name}</h3>
                                             <p className="text-xs text-stone-400">DNI: {selectedStudentDetail.dni} | {selectedStudentDetail.sede}</p>
+                                            {selectedStudentDetail.fecha_inicio && (
+                                                <p className="text-xs font-semibold text-amber-600 mt-1">
+                                                    Inscripto el: {formatDate(selectedStudentDetail.fecha_inicio)}
+                                                </p>
+                                            )}
                                         </div>
                                     </div>
                                     <button 
@@ -1996,10 +2044,20 @@ function App() {
 
                                     {/* Estado Financiero */}
                                     <div className="bg-stone-50 p-4 rounded-2xl border border-stone-100">
-                                        <h4 className="text-xs font-bold text-stone-400 uppercase mb-3">Historial de Cuotas (2026)</h4>
-                                        <div className="space-y-2">
+                                        <div className="flex justify-between items-start mb-3">
+                                            <h4 className="text-xs font-bold text-stone-400 uppercase">Estado Financiero</h4>
+                                            <div className="text-right">
+                                                <p className={`text-xl font-extrabold ${studentDebts[selectedStudentDetail.id] > 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
+                                                    Saldo: ${studentDebts[selectedStudentDetail.id]?.toLocaleString() || 0}
+                                                </p>
+                                                {studentDebts[selectedStudentDetail.id] > 0 && activeStudentStats.missingPeriods.length > 0 && (
+                                                    <p className="text-[10px] text-rose-500 font-bold">Meses impagos: {activeStudentStats.missingPeriods.join(', ')}</p>
+                                                )}
+                                            </div>
+                                        </div>
+                                        <div className="space-y-3">
                                             <div className="flex flex-wrap gap-1.5">
-                                                {["Marzo", "Abril", "Mayo", "Junio"].map(month => {
+                                                {(activeStudentStats.expectedPeriods || ["Marzo", "Abril", "Mayo", "Junio"]).map(month => {
                                                     const isPaid = activeStudentStats.paidPeriods.includes(month);
                                                     return (
                                                         <span 
@@ -2013,7 +2071,20 @@ function App() {
                                                     );
                                                 })}
                                             </div>
-                                            <p className="text-[11px] text-stone-400 italic">Precios sugeridos según configuración de aranceles</p>
+                                            <div className="flex gap-4 text-[11px] text-stone-500 font-medium bg-white p-2 rounded-lg border border-stone-100">
+                                                <p>Cuota mensual: <span className="font-bold text-stone-700">${activeStudentStats.valorCuota.toLocaleString()}</span></p>
+                                                <p>Inscripción: <span className="font-bold text-stone-700">${activeStudentStats.valorInscripcion.toLocaleString()}</span></p>
+                                            </div>
+                                            {studentDebts[selectedStudentDetail.id] > 0 && selectedStudentDetail.email && (
+                                                <a 
+                                                    href={`https://mail.google.com/mail/?view=cm&fs=1&to=${selectedStudentDetail.email}&su=${encodeURIComponent('Recordatorio de Pago - Instituto IDeAr')}&body=${encodeURIComponent(`Hola,\n\nNos comunicamos del Instituto Para el Desarrollo del Arte (IDeAr).\n\nLe recordamos que, a la fecha, registra un saldo pendiente de $${studentDebts[selectedStudentDetail.id].toLocaleString()} en la cuenta de ${selectedStudentDetail.name}, correspondiente a los siguientes meses/conceptos impagos: ${activeStudentStats.missingPeriods.join(', ')}.\n\nEl valor de la cuota mensual es de $${activeStudentStats.valorCuota.toLocaleString()}.\n\nAgradecemos regularizar su situación a la brevedad.\n\nSaludos cordiales,\nEquipo IDeAr - Sede ${selectedStudentDetail.sede}`)}`}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="mt-3 block w-full text-center bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold py-2 px-4 rounded-xl text-xs transition-colors border border-rose-200 shadow-sm"
+                                                >
+                                                    <i className="fas fa-envelope mr-2"></i> Enviar Recordatorio (vía Gmail)
+                                                </a>
+                                            )}
                                         </div>
                                     </div>
                                 </div>
