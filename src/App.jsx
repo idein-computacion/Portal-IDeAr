@@ -54,6 +54,7 @@ function App() {
             const [studentSearch, setStudentSearch] = useState("");
 
             const [studentNivelFilter, setStudentNivelFilter] = useState("Todos");
+            const [alumnoStatusTab, setAlumnoStatusTab] = useState("activos");
 
             // Filtros de asistencias
 
@@ -90,6 +91,9 @@ function App() {
             // Estado de conexión Firebase Realtime Database
             const [firebaseConnected, setFirebaseConnected] = useState(false);
 
+            // Recibo público (compartido por email)
+            const [publicReceipt, setPublicReceipt] = useState(null);
+
             // --- NOTIFICACIONES PERSONALIZADAS ---
             const addNotification = (text, type = "success") => {
                 const id = Date.now();
@@ -112,6 +116,19 @@ function App() {
 
             // --- CONEXIÓN DE SEDES DINÁMICAS ---
             useEffect(() => {
+                // Verificar si es un enlace de descarga de recibo público
+                const params = new URLSearchParams(window.location.search);
+                const receiptData = params.get('descargar_recibo');
+                if (receiptData) {
+                    try {
+                        const decoded = JSON.parse(decodeURIComponent(escape(atob(receiptData))));
+                        setPublicReceipt(decoded);
+                    } catch (e) {
+                        console.error("Error decodificando recibo:", e);
+                    }
+                    return; // Detener inicialización normal si es recibo público
+                }
+
                 const sedesRef = ref(rtdb, 'sedes');
                 const unsubSedes = onValue(sedesRef, (snapshot) => {
                     const data = snapshot.val();
@@ -395,17 +412,23 @@ function App() {
                 e.preventDefault();
                 const formData = new FormData(e.target);
                 const studentData = {
-                    id: editingStudent ? editingStudent.id : (formData.get("dni").trim() || Date.now().toString()),
-                    name: formData.get("name").trim(),
-                    dni: formData.get("dni").trim(),
+                    id: editingStudent ? editingStudent.id : ((formData.get("dni") || "").trim() || Date.now().toString()),
+                    name: (formData.get("name") || "").trim(),
+                    dni: editingStudent ? editingStudent.dni : (formData.get("dni") || "").trim(),
                     level: formData.get("level"),
                     sede: formData.get("sede"),
-                    phone: formData.get("phone").trim(),
-                    email: formData.get("email").trim(),
-                    tutor: formData.get("tutor").trim(),
-                    address: formData.get("address").trim(),
+                    phone: (formData.get("phone") || "").trim(),
+                    email: (formData.get("email") || "").trim(),
+                    tutor: (formData.get("tutor") || "").trim(),
+                    address: (formData.get("address") || "").trim(),
+                    fecha_inicio: formData.get("fecha_inicio") || "",
                     active: formData.get("active") === "on" ? true : false
                 };
+
+                const cuotaOverride = formData.get("cuotaOverride");
+                const inscripcionOverride = formData.get("inscripcionOverride");
+                if (cuotaOverride) studentData.cuotaOverride = Number(cuotaOverride);
+                if (inscripcionOverride) studentData.inscripcionOverride = Number(inscripcionOverride);
 
                 if (!studentData.name || !studentData.dni) {
                     addNotification("DNI y Apellido/Nombre son obligatorios", "error");
@@ -731,13 +754,14 @@ function App() {
                     const matchesSearch = s.name.toLowerCase().includes(studentSearch.toLowerCase()) || s.dni.includes(studentSearch);
                     
                     const matchesNivel = studentNivelFilter === "Todos" || s.level === studentNivelFilter;
-                    return matchesSearch && matchesNivel;
+                    const matchesStatus = alumnoStatusTab === "todos" ? true : (alumnoStatusTab === "activos" ? s.active : !s.active);
+                    return matchesSearch && matchesNivel && matchesStatus;
                 }).sort((a, b) => {
                     if (a.active !== b.active) return a.active ? -1 : 1;
                     if (a.level !== b.level) return (a.level || '').localeCompare(b.level || '');
                     return (a.name || '').localeCompare(b.name || '');
                 });
-            }, [students, studentSearch, globalSede, studentNivelFilter]);
+            }, [students, studentSearch, globalSede, studentNivelFilter, alumnoStatusTab]);
 
             // --- CÁLCULO DE DEUDA POR ALUMNO ---
             const studentDebts = useMemo(() => {
@@ -764,8 +788,8 @@ function App() {
                     let levelConfig = configLevels.find(c => c.curso_nivel === student.level) 
                                       || configLevels.find(c => c.curso_nivel === student.taller);
                     
-                    const inscripcion = levelConfig?.inscripcion || 20000;
-                    const cuota = levelConfig?.cuota || 25000;
+                    const inscripcion = student.inscripcionOverride !== undefined && student.inscripcionOverride !== "" ? Number(student.inscripcionOverride) : (levelConfig?.inscripcion || 20000);
+                    const cuota = student.cuotaOverride !== undefined && student.cuotaOverride !== "" ? Number(student.cuotaOverride) : (levelConfig?.cuota || 25000);
                     
                     const totalExpected = inscripcion + (cuota * monthsToPay);
                     
@@ -851,8 +875,8 @@ function App() {
                 const MONTHS_ORDER = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
                 const levelConfig = configLevels.find(c => c.curso_nivel === selectedStudentDetail.level) 
                                     || configLevels.find(c => c.curso_nivel === selectedStudentDetail.taller);
-                const valorInscripcion = levelConfig?.inscripcion || 20000;
-                const valorCuota = levelConfig?.cuota || 25000;
+                const valorInscripcion = selectedStudentDetail.inscripcionOverride !== undefined && selectedStudentDetail.inscripcionOverride !== "" ? Number(selectedStudentDetail.inscripcionOverride) : (levelConfig?.inscripcion || 20000);
+                const valorCuota = selectedStudentDetail.cuotaOverride !== undefined && selectedStudentDetail.cuotaOverride !== "" ? Number(selectedStudentDetail.cuotaOverride) : (levelConfig?.cuota || 25000);
                 const sumaTotal = valorInscripcion + valorCuota;
 
                 const paidPeriods = [];
@@ -899,6 +923,97 @@ function App() {
             const handlePrintReceipt = () => {
                 window.print();
             };
+
+            const handleDownloadPublicReceipt = () => {
+                const element = document.getElementById('public-receipt-print-area');
+                if (window.html2pdf && element) {
+                    const opt = {
+                        margin: 8,
+                        filename: `Comprobante_${publicReceipt.receiptNo}.pdf`,
+                        image: { type: 'jpeg', quality: 1 },
+                        html2canvas: { 
+                            scale: 2, 
+                            useCORS: true, 
+                            scrollY: 0 
+                        },
+                        jsPDF: { unit: 'mm', format: 'a5', orientation: 'portrait' }
+                    };
+                    window.html2pdf().set(opt).from(element).save();
+                } else {
+                    window.print();
+                }
+            };
+
+            if (publicReceipt) {
+                return (
+                    <div className="min-h-screen bg-stone-200 flex flex-col items-center p-4 sm:p-8">
+                        <div className="w-full max-w-3xl flex flex-col items-center">
+                            <h2 className="text-2xl font-black text-center text-stone-800 mb-6">Comprobante Oficial de Pago</h2>
+                            
+                            {/* CONTENEDOR OPTIMIZADO PARA A5 */}
+                            <div 
+                                id="public-receipt-print-area" 
+                                className="bg-white text-stone-900 p-6 sm:p-8 w-full shadow-2xl relative border-4 border-stone-200 rounded-[2rem]"
+                                style={{ maxWidth: '148mm', minHeight: '105mm' }} 
+                            >
+                                <div className="flex justify-between items-start border-b-2 pb-4 border-stone-200">
+                                    <div className="flex flex-col items-center text-center">
+                                        <img src="/logo.png" alt="Logo IDeAr" className="w-28 h-auto object-contain" />
+                                        <div className="mt-3">
+                                            <p className="text-[10px] text-stone-500 font-bold uppercase tracking-wider">Instituto Para el Desarrollo del Arte</p>
+                                            <p className="text-[10px] text-stone-400 mt-0.5">Reg. SPEPM N° 213/21</p>
+                                        </div>
+                                    </div>
+                                    <div className="text-right space-y-1.5">
+                                        <div className="bg-stone-900 text-white font-black px-4 py-1.5 rounded-lg text-sm inline-block uppercase tracking-wider shadow-sm">
+                                            Recibo X
+                                        </div>
+                                        <p className="text-xs font-bold text-stone-700 pt-1">Nro: {publicReceipt.receiptNo}</p>
+                                        <p className="text-[11px] text-stone-500 font-semibold">Fecha: {formatDate(publicReceipt.date)}</p>
+                                        <p className="text-[9px] text-stone-400 font-bold italic pt-1">Documento no válido como Factura</p>
+                                    </div>
+                                </div>
+                                
+                                <div className="bg-stone-50 p-4 rounded-xl border border-stone-200 mt-6 space-y-2">
+                                    <p className="flex justify-between items-center text-xs">
+                                        <span className="text-stone-500 font-bold uppercase">Alumno:</span>
+                                        <span className="font-extrabold text-stone-900 text-sm">{publicReceipt.studentName}</span>
+                                    </p>
+                                    <p className="flex justify-between items-center text-xs">
+                                        <span className="text-stone-500 font-bold uppercase">DNI:</span>
+                                        <span className="font-bold text-stone-700">{publicReceipt.studentId}</span>
+                                    </p>
+                                </div>
+                                
+                                <div className="mt-6 space-y-3">
+                                    <div className="flex justify-between items-center py-2 border-b border-stone-100">
+                                        <div>
+                                            <p className="font-black text-stone-800 text-base">{publicReceipt.concept}</p>
+                                            <p className="text-xs text-stone-500 mt-1 font-medium">Mes: {publicReceipt.period} | Vía: {publicReceipt.method}</p>
+                                        </div>
+                                        <span className="font-black text-stone-900 text-xl">${publicReceipt.amount.toLocaleString()}</span>
+                                    </div>
+                                </div>
+                                
+                                <div className="mt-8 border-t-2 border-stone-200 pt-4 flex justify-between items-end">
+                                    <span className="text-xs font-black uppercase text-stone-500 tracking-wider">Monto Total</span>
+                                    <div className="text-right">
+                                        <p className="text-3xl font-black text-amber-900">${publicReceipt.amount.toLocaleString()}</p>
+                                        <p className="text-[10px] text-stone-400 font-medium italic mt-1">Expresado en pesos argentinos</p>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <button 
+                                onClick={handleDownloadPublicReceipt}
+                                className="w-full max-w-sm mt-8 bg-amber-600 hover:bg-amber-700 text-white font-bold py-4 rounded-2xl transition-all shadow-xl flex items-center justify-center gap-3 text-lg"
+                            >
+                                <i className="fas fa-file-pdf text-2xl"></i> Descargar Comprobante
+                            </button>
+                        </div>
+                    </div>
+                );
+            }
 
             if (!globalSede) {
                 if (tempSede) {
@@ -1492,9 +1607,17 @@ function App() {
                                                         required={!newPayment.studentId}
                                                     />
                                                     {newPayment.studentId && (
-                                                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-emerald-600 font-bold text-xs bg-emerald-50 px-2.5 py-1 rounded-lg flex items-center gap-1">
-                                                            <i className="fas fa-check-circle"></i> Seleccionado
-                                                        </span>
+                                                        <button 
+                                                            type="button"
+                                                            onClick={() => {
+                                                                setNewPayment(prev => ({ ...prev, studentId: "" }));
+                                                                setStudentSelectSearch("");
+                                                            }}
+                                                            className="absolute right-3 top-1/2 -translate-y-1/2 text-rose-500 hover:text-rose-700 hover:bg-rose-50 font-bold text-xs bg-stone-100 px-2.5 py-1 rounded-lg flex items-center gap-1 transition-colors"
+                                                            title="Limpiar selección"
+                                                        >
+                                                            <i className="fas fa-times"></i> Limpiar
+                                                        </button>
                                                     )}
                                                 </div>
                                                 
@@ -1652,7 +1775,17 @@ function App() {
                                                         filteredPayments.map(p => (
                                                             <tr key={p.id} className="hover:bg-stone-50/50 transition-colors text-sm">
                                                                 <td className="py-3 px-4 font-medium text-stone-500">{formatDate(p.date)}</td>
-                                                                <td className="py-3 px-4 font-semibold text-stone-800">{p.studentName}</td>
+                                                                <td 
+                                                                    className="py-3 px-4 font-semibold text-stone-800 cursor-pointer hover:text-emerald-600 hover:underline transition-colors"
+                                                                    title="Nuevo cobro para este alumno"
+                                                                    onClick={() => {
+                                                                        setNewPayment(prev => ({ ...prev, studentId: p.studentId }));
+                                                                        setStudentSelectSearch(p.studentName);
+                                                                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                                                                    }}
+                                                                >
+                                                                    {p.studentName}
+                                                                </td>
                                                                 <td className="py-3 px-4">
                                                                     <span className="bg-amber-50 text-amber-700 px-2 py-1 rounded-full text-xs font-bold">{p.period}</span>
                                                                 </td>
@@ -1725,6 +1858,16 @@ function App() {
                                         >
                                             <option value="Todos">Todos los Niveles</option>
                                             {configLevels.map(c => <option key={c.id} value={c.curso_nivel}>{c.curso_nivel}</option>)}
+                                        </select>
+                                        
+                                        <select
+                                            value={alumnoStatusTab}
+                                            onChange={(e) => setAlumnoStatusTab(e.target.value)}
+                                            className="p-3 rounded-xl border border-stone-200 text-sm outline-none bg-stone-50 font-semibold text-stone-600"
+                                        >
+                                            <option value="activos">Alumnos Activos</option>
+                                            <option value="bajas">Alumnos en Baja (Bajas)</option>
+                                            <option value="todos">Todos los Alumnos</option>
                                         </select>
                                     </div>
 
@@ -1936,14 +2079,25 @@ function App() {
                                         </div>
                                     </div>
 
-                                    <div>
-                                        <label className="block text-xs font-bold text-stone-500 uppercase mb-2">Email del Alumno/Tutor</label>
-                                        <input 
-                                            type="email" 
-                                            name="email"
-                                            defaultValue={editingStudent?.email || ""}
-                                            className="w-full p-3 rounded-xl border border-stone-200 outline-none bg-stone-50"
-                                        />
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div>
+                                            <label className="block text-xs font-bold text-stone-500 uppercase mb-2">Email del Alumno/Tutor</label>
+                                            <input 
+                                                type="email" 
+                                                name="email"
+                                                defaultValue={editingStudent?.email || ""}
+                                                className="w-full p-3 rounded-xl border border-stone-200 outline-none bg-stone-50"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-bold text-stone-500 uppercase mb-2">Fecha de Inscripción</label>
+                                            <input 
+                                                type="date" 
+                                                name="fecha_inicio"
+                                                defaultValue={editingStudent?.fecha_inicio || ""}
+                                                className="w-full p-3 rounded-xl border border-stone-200 outline-none bg-stone-50 font-semibold"
+                                            />
+                                        </div>
                                     </div>
 
                                     <div className="grid grid-cols-2 gap-4">
@@ -1964,6 +2118,31 @@ function App() {
                                                 defaultValue={editingStudent?.address || ""}
                                                 className="w-full p-3 rounded-xl border border-stone-200 outline-none bg-stone-50"
                                             />
+                                        </div>
+                                    </div>
+
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div>
+                                            <label className="block text-xs font-bold text-stone-500 uppercase mb-2">Cuota Mensual ($)</label>
+                                            <input 
+                                                type="number" 
+                                                name="cuotaOverride"
+                                                placeholder="Personalizada..."
+                                                defaultValue={editingStudent?.cuotaOverride || ""}
+                                                className="w-full p-3 rounded-xl border border-stone-200 outline-none bg-amber-50"
+                                            />
+                                            <p className="text-[10px] text-stone-400 mt-1">Dejar vacío para el valor por defecto</p>
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-bold text-stone-500 uppercase mb-2">Inscripción ($)</label>
+                                            <input 
+                                                type="number" 
+                                                name="inscripcionOverride"
+                                                placeholder="Personalizada..."
+                                                defaultValue={editingStudent?.inscripcionOverride || ""}
+                                                className="w-full p-3 rounded-xl border border-stone-200 outline-none bg-amber-50"
+                                            />
+                                            <p className="text-[10px] text-stone-400 mt-1">Dejar vacío para el valor por defecto</p>
                                         </div>
                                     </div>
 
@@ -2077,7 +2256,7 @@ function App() {
                                             </div>
                                             {studentDebts[selectedStudentDetail.id] > 0 && selectedStudentDetail.email && (
                                                 <a 
-                                                    href={`https://mail.google.com/mail/?view=cm&fs=1&to=${selectedStudentDetail.email}&su=${encodeURIComponent('Recordatorio de Pago - Instituto IDeAr')}&body=${encodeURIComponent(`Hola,\n\nNos comunicamos del Instituto Para el Desarrollo del Arte (IDeAr).\n\nLe recordamos que, a la fecha, registra un saldo pendiente de $${studentDebts[selectedStudentDetail.id].toLocaleString()} en la cuenta de ${selectedStudentDetail.name}, correspondiente a los siguientes meses/conceptos impagos: ${activeStudentStats.missingPeriods.join(', ')}.\n\nEl valor de la cuota mensual es de $${activeStudentStats.valorCuota.toLocaleString()}.\n\nAgradecemos regularizar su situación a la brevedad.\n\nSaludos cordiales,\nEquipo IDeAr - Sede ${selectedStudentDetail.sede}`)}`}
+                                                    href={`https://mail.google.com/mail/?view=cm&fs=1&to=${selectedStudentDetail.email}&su=${encodeURIComponent('Recordatorio de Pago - Instituto IDeAr')}&body=${encodeURIComponent(`Hola,\n\nNos comunicamos del Instituto Para el Desarrollo del Arte (IDeAr).\n\nLe recordamos que la alumna/o ${selectedStudentDetail.name}, a la fecha, registra un saldo pendiente de $${studentDebts[selectedStudentDetail.id].toLocaleString()}, correspondiente a los siguientes meses/conceptos impagos: ${activeStudentStats.missingPeriods.join(', ')}.\n\nEl valor de la cuota mensual es de $${activeStudentStats.valorCuota.toLocaleString()}.\n\nAgradecemos regularizar su situación a la brevedad.\n\nSaludos cordiales,\nEquipo IDeAr - Sede ${selectedStudentDetail.sede}`)}`}
                                                     target="_blank"
                                                     rel="noopener noreferrer"
                                                     className="mt-3 block w-full text-center bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold py-2 px-4 rounded-xl text-xs transition-colors border border-rose-200 shadow-sm"
@@ -2219,8 +2398,16 @@ function App() {
                                         onClick={handlePrintReceipt}
                                         className="flex-1 bg-amber-600 hover:bg-amber-700 text-white font-bold py-3 rounded-xl transition-all shadow-md flex items-center justify-center gap-2"
                                     >
-                                        <i className="fas fa-print"></i> Imprimir Recibo X
+                                        <i className="fas fa-print"></i> Imprimir (PDF)
                                     </button>
+                                    <a 
+                                        href={`https://mail.google.com/mail/?view=cm&fs=1&to=${students.find(s => s.id === activeReceipt?.studentId)?.email || ''}&su=${encodeURIComponent(`Comprobante de Pago Nro ${activeReceipt.receiptNo} - IDeAr`)}&body=${encodeURIComponent(`Hola ${activeReceipt.studentName},\n\nNos comunicamos del Instituto Para el Desarrollo del Arte (IDeAr).\n\nAquí tienes tu comprobante de pago Nro: ${activeReceipt.receiptNo}.\n\nPara descargar una copia oficial en PDF del recibo, haz clic en el siguiente enlace:\n${window.location.origin}/?descargar_recibo=${btoa(unescape(encodeURIComponent(JSON.stringify(activeReceipt))))}\n\nDetalle del Pago:\n- Concepto: ${activeReceipt.concept}\n- Periodo: ${activeReceipt.period}\n- Importe Abonado: $${activeReceipt.amount.toLocaleString()}\n- Medio de Pago: ${activeReceipt.method}\n\nSaludos cordiales,\nEquipo IDeAr - Sede ${globalSede}`)}`}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="flex-1 bg-rose-600 hover:bg-rose-700 text-white font-bold py-3 rounded-xl transition-all shadow-md flex items-center justify-center gap-2"
+                                    >
+                                        <i className="fas fa-envelope"></i> Enviar Gmail
+                                    </a>
                                 </div>
 
                             </div>
