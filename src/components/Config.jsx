@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { ref, set, remove, get } from 'firebase/database';
 import { rtdb } from '../config/firebase';
+import { NIVELES } from '../data/seedData';
 
 
 function UserRow({ user, currentUser, addNotification }) {
@@ -23,7 +24,8 @@ function UserRow({ user, currentUser, addNotification }) {
     };
 
     const handleDelete = async () => {
-        if (user.sede === "Leandro N. Alem") {
+        const userSedes = user.sede ? user.sede.split(',').map(s => s.trim()) : [];
+        if (userSedes.includes("Leandro N. Alem")) {
             addNotification("No se pueden eliminar credenciales de administrador de Alem", "error");
             return;
         }
@@ -47,13 +49,17 @@ function UserRow({ user, currentUser, addNotification }) {
             <td className="py-3 px-3 font-semibold text-stone-850">{user.nombre}</td>
             <td className="py-3 px-3 text-stone-650">{user.dni}</td>
             <td className="py-3 px-3">
-                <span className={`text-xs px-2.5 py-1 rounded-full font-bold ${
-                    user.sede === "Leandro N. Alem" 
-                        ? "bg-amber-100 text-amber-800" 
-                        : "bg-orange-50 text-orange-700"
-                }`}>
-                    {user.sede}
-                </span>
+                <div className="flex flex-wrap gap-1">
+                    {(user.sede ? user.sede.split(',') : []).map(s => s.trim()).filter(Boolean).map(s => (
+                        <span key={s} className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
+                            s === "Leandro N. Alem" 
+                                ? "bg-amber-100 text-amber-800" 
+                                : "bg-orange-50 text-orange-700"
+                        }`}>
+                            {s}
+                        </span>
+                    ))}
+                </div>
             </td>
             <td className="py-3 px-3">
                 {isEditing ? (
@@ -122,16 +128,37 @@ function Config({ configLevels, setConfigLevels, addNotification, globalSede, ge
     
     const handleSaveToFirebase = async (levelsToSave) => {
         try {
-            const safeSede = globalSede.replace(/\./g, '');
+            const currentMonth = new Date().getMonth();
+            const currentYear = new Date().getFullYear();
+            
+            // Actualizar el historial de precios para cada nivel
+            const updatedLevels = levelsToSave.map(lvl => {
+                let history = lvl.historial ? [...lvl.historial] : [{ month: 0, year: currentYear, cuota: lvl.cuota, inscripcion: lvl.inscripcion }];
+                let latest = { ...history[history.length - 1] };
+                
+                if (latest.cuota !== lvl.cuota || latest.inscripcion !== lvl.inscripcion) {
+                    if (latest.month === currentMonth && latest.year === currentYear) {
+                        latest.cuota = lvl.cuota;
+                        latest.inscripcion = lvl.inscripcion;
+                        history[history.length - 1] = latest;
+                    } else {
+                        history.push({ month: currentMonth, year: currentYear, cuota: lvl.cuota, inscripcion: lvl.inscripcion });
+                    }
+                }
+                return { ...lvl, historial: history };
+            });
+
+            const safeSede = globalSede.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\./g, '');
             // Sobreescribimos el nodo completo de la sede en Firebase para persistir eliminaciones
             const dataToSave = {
                 info: generalConfig
             };
-            levelsToSave.forEach(c => {
+            updatedLevels.forEach(c => {
                 dataToSave[c.id] = c;
             });
             await set(ref(rtdb, `config/${safeSede}`), dataToSave);
-            localStorage.setItem(`idear_config_${safeSede}`, JSON.stringify(levelsToSave));
+            setConfigLevels(updatedLevels); // Actualizar el estado local con el historial
+            localStorage.setItem(`idear_config_${safeSede}`, JSON.stringify(updatedLevels));
             addNotification("Configuración de aranceles guardada exitosamente", "success");
         } catch(e) {
             addNotification("Error guardando aranceles en nube", "error");
@@ -248,9 +275,10 @@ function Config({ configLevels, setConfigLevels, addNotification, globalSede, ge
         const nombre = formData.get("newUserNombre").trim();
         const dni    = formData.get("newUserDni").trim();
         const pass   = formData.get("newUserPass").trim();
-        const sede   = formData.get("newUserSede");
+        const sedesArray = formData.getAll("newUserSede");
+        const sede = sedesArray.join(", ");
 
-        if (!nombre || !dni || !pass || !sede) {
+        if (!nombre || !dni || !pass || sedesArray.length === 0) {
             addNotification("Todos los campos son obligatorios", "error");
             return;
         }
@@ -269,7 +297,7 @@ function Config({ configLevels, setConfigLevels, addNotification, globalSede, ge
 
             const newUser = { dni, nombre, password: pass, sede };
             await set(ref(rtdb, `usuarios/${dni}`), newUser);
-            addNotification(`Usuario "${nombre}" creado con éxito para la sede ${sede}`, "success");
+            addNotification(`Usuario "${nombre}" creado con éxito para: ${sede}`, "success");
             e.target.reset();
         } catch (err) {
             console.error("Error al crear usuario:", err);
@@ -298,6 +326,31 @@ function Config({ configLevels, setConfigLevels, addNotification, globalSede, ge
                             className="w-full p-3 rounded-xl border border-stone-200 outline-none bg-white font-semibold focus:ring-2 focus:ring-amber-500 transition-all"
                         />
                     </div>
+                    {currentUser && (
+                        <div className="mt-4 md:mt-0 pt-4 md:pt-6">
+                            <button 
+                                type="button"
+                                onClick={() => {
+                                    const currentPass = prompt("Por seguridad, ingresa tu contraseña actual:");
+                                    if (currentPass !== currentUser.password) {
+                                        addNotification("La contraseña actual es incorrecta", "error");
+                                        return;
+                                    }
+                                    const newPass = prompt("Ingresa tu nueva contraseña:");
+                                    if (!newPass || newPass.trim() === "") return;
+                                    set(ref(rtdb, `usuarios/${currentUser.dni}/password`), newPass.trim())
+                                        .then(() => {
+                                            addNotification("Contraseña actualizada con éxito", "success");
+                                            currentUser.password = newPass.trim(); // Actualización optimista local
+                                        })
+                                        .catch(() => addNotification("Error actualizando la contraseña", "error"));
+                                }}
+                                className="w-full md:w-auto bg-stone-200 hover:bg-stone-300 text-stone-700 font-bold py-3 px-6 rounded-xl transition-all shadow-sm text-sm flex items-center justify-center gap-2"
+                            >
+                                <i className="fas fa-key"></i> Cambiar mi Contraseña
+                            </button>
+                        </div>
+                    )}
                 </div>
 
                 {/* Formulario para agregar nuevo curso */}
@@ -357,7 +410,13 @@ function Config({ configLevels, setConfigLevels, addNotification, globalSede, ge
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-stone-50">
-                            {configLevels.map(c => (
+                            {[...configLevels].sort((a, b) => {
+                                let idxA = NIVELES.indexOf(a.curso_nivel);
+                                let idxB = NIVELES.indexOf(b.curso_nivel);
+                                if (idxA === -1) idxA = 999;
+                                if (idxB === -1) idxB = 999;
+                                return idxA - idxB;
+                            }).map(c => (
                                 <tr key={c.id} className="hover:bg-stone-50/50 transition-colors text-sm">
                                     <td className="py-2 px-3 font-semibold text-stone-700">{c.curso_nivel}</td>
                                     <td className="py-2 px-3">
@@ -564,13 +623,14 @@ function Config({ configLevels, setConfigLevels, addNotification, globalSede, ge
                                     />
                                 </div>
                                 <div>
-                                    <label className="block text-xs font-bold text-stone-500 uppercase mb-2">Sede</label>
+                                    <label className="block text-xs font-bold text-stone-500 uppercase mb-1">Sedes a cargo</label>
+                                    <p className="text-[10px] text-stone-400 mb-1">Ctrl + clic para elegir varias</p>
                                     <select
                                         name="newUserSede"
-                                        className="w-full p-2.5 rounded-xl border border-stone-200 outline-none bg-white font-semibold focus:ring-2 focus:ring-amber-500 text-sm"
+                                        multiple
+                                        className="w-full p-2 rounded-xl border border-stone-200 outline-none bg-white font-semibold focus:ring-2 focus:ring-amber-500 text-xs h-20"
                                         required
                                     >
-                                        <option value="">— Seleccionar —</option>
                                         {sedes.filter(s => s.nombre !== "Leandro N. Alem").map(s => (
                                             <option key={s.nombre} value={s.nombre}>{s.nombre}</option>
                                         ))}
