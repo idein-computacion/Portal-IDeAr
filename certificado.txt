@@ -1,0 +1,600 @@
+﻿                                  children: a.jsx("div", {
+                                    className:
+                                      "border-t-2 border-stone-400 pt-1 w-48 mx-auto",
+                                    children: a.jsx("p", {
+                                      className:
+                                        "text-[11px] font-bold text-stone-600 uppercase",
+                                      children: "Firma del Profesor",
+                                    }),
+                                  }),
+                                }),
+                                a.jsx("div", {
+                                  className: "text-center",
+                                  children: a.jsx("div", {
+                                    className:
+                                      "border-t-2 border-stone-400 pt-1 w-48 mx-auto",
+                                    children: a.jsx("p", {
+                                      className:
+                                        "text-[11px] font-bold text-stone-600 uppercase",
+                                      children: "Firma de DirecciÃ³n",
+                                    }),
+                                  }),
+                                }),
+                              ],
+                            }),
+                          ],
+                        }),
+                      ],
+                    },
+                    k.title,
+                  ),
+                ),
+        }),
+      ],
+    });
+  },
+  XA = ({
+    student: t,
+    sedeObj: e,
+    mesasGrades: n,
+    mesasColumns: r,
+    configLevels: s,
+    allLevels: i,
+    onClose: o,
+    profesorName: c,
+  }) => {
+    const u = n.filter((m) => m.studentId === t.id),
+      d = (m) => {
+        const g = parseFloat(m);
+        if (isNaN(g)) return "";
+        const _ = {
+          1: "Uno",
+          2: "Dos",
+          3: "Tres",
+          4: "Cuatro",
+          5: "Cinco",
+          6: "Seis",
+          7: "Siete",
+          8: "Ocho",
+          9: "Nueve",
+          10: "Diez",
+        };
+        return _[g] ? ` (${_[g]})` : "";
+      };
+    return (
+      Q.useEffect(() => {
+        const m = document.title;
+        return (
+          (document.title = "IDeAr - Certificado AnalÃ­tico"),
+          () => {
+            document.title = m;
+          }
+        );
+      }, []),
+      a.jsxs("div", {
+        className:
+          "fixed inset-0 bg-stone-900/90 z-[110] flex flex-col print:absolute print:bg-white print:inset-0",
+        children: [
+          a.jsxs("div", {
+            className:
+              "flex justify-end p-4 gap-4 bg-stone-900 shadow-xl no-print",
+            children: [
+              a.jsxs("button", {
+                onClick: () => window.print(),
+                className:
+                  "bg-amber-600 hover:bg-amber-700 text-white px-6 py-2 rounded-xl font-bold shadow-md transition-all flex items-center gap-2",
+                children: [
+                  a.jsx("i", { className: "fas fa-print" }),
+                  " Imprimir AnalÃ­tico",
+                ],
+              }),
+              a.jsxs("button", {
+                onClick: o,
+                className:
+                  "bg-stone-700 hover:bg-stone-600 text-white px-6 py-2 rounded-xl font-bold transition-all flex items-center gap-2",
+                children: [
+                  a.jsx("i", { className: "fas fa-times" }),
+                  " Cerrar",
+                ],
+              }),
+            ],
+          }),
+          a.jsx("div", {
+            className:
+              "flex-1 overflow-y-auto p-2 md:p-4 flex justify-center print:overflow-visible print:p-0 print:block",
+            children: a.jsxs("div", {
+              id: "analitico-print-area",
+              className:
+                "bg-white text-stone-900 p-2 max-w-[210mm] w-full mx-auto shadow-2xl relative min-h-[297mm] print:min-h-0 print:shadow-none print:m-0 print:max-w-none print:w-full flex flex-col print:block overflow-hidden print:overflow-visible",
+              children: [
+                a.jsx("div", {
+                  className:
+                    "absolute inset-0 pointer-events-none flex items-center justify-center opacity-[0.10] print:opacity-[0.10] z-0",
+                  children: a.jsx("img", {
+                    src: "/logo.png",
+                    alt: "",
+                    className: "w-[65%] max-w-[480px] object-contain grayscale",
+                  }),
+                }),
+                a.jsxs("div", {
+                  className: "relative z-10 flex flex-col print:block flex-1",
+                  children: [
+                    a.jsx("div", {
+                      className:
+                        "flex justify-between items-center border-b border-stone-800 pb-0.5 mb-1 w-full gap-2",
+                      children: a.jsxs("div", {
+                        className: "flex items-center gap-2 w-full",
+                        children: [
+                          a.jsx("img", {
+                            src: "/logo.png",
+                            alt: "IDeAr",
+                            className: "h-10 print:h-8 object-contain",
+                          }),
+                          a.jsxs("div", {
+                            className:
+                              "flex flex-col items-center justify-center flex-1",
+                            children: [
+                              a.jsx("p", {
+                                className:
+                                  "text-[8px] font-bold text-stone-500 mt-0.5 uppercase text-center",
+                                children:
+                                  "Inscripto en el Servicio Provincial de EnseÃ±anza Privada de Misiones (SPEPM) bajo el Registro NÂº 213/21",
+                              }),
+                              a.jsx("p", {
+                                className:
+                                  "text-[7px] font-bold text-stone-500 mt-0.5 uppercase text-center",
+                                children:
+                                  "CertificaciÃ³n emitida segÃºn el Plan de Estudios autorizado por el SPEPM para la especialidad en Danzas FolklÃ³ricas Argentinas",
+                              }),
+                            ],
+                          }),
+                        ],
+                      }),
+                    }),
+                    a.jsx("div", {
+                      className:
+                        "border-b border-stone-800 pb-0.5 mb-1.5 text-center mt-1",
+                      children: a.jsx("h2", {
+                        className:
+                          "text-[12px] font-black uppercase tracking-widest text-stone-900",
+                        children: "Certificado AnalÃ­tico de Estudios",
+                      }),
+                    }),
+                    a.jsx("div", {
+                      className:
+                        "border border-stone-800 rounded-lg p-1.5 print:p-1 flex flex-col gap-0 w-full text-[8px] print:text-[7px] bg-stone-50/50",
+                      children: a.jsxs("div", {
+                        className: "grid grid-cols-2 gap-y-1 text-[8px]",
+                        children: [
+                          a.jsxs("div", {
+                            children: [
+                              a.jsxs("p", {
+                                children: [
+                                  a.jsx("span", {
+                                    className: "font-bold text-stone-600 mr-2",
+                                    children: "Establecimiento:",
+                                  }),
+                                  " ",
+                                  a.jsx("span", {
+                                    className: "font-bold text-stone-900",
+                                    children:
+                                      "IDeAr (Instituto para el Desarrollo del Arte)",
+                                  }),
+                                ],
+                              }),
+                              a.jsxs("p", {
+                                children: [
+                                  a.jsx("span", {
+                                    className: "font-bold text-stone-600 mr-2",
+                                    children: "Alumno/a:",
+                                  }),
+                                  " ",
+                                  a.jsx("span", {
+                                    className:
+                                      "font-black text-stone-900 uppercase text-[9px]",
+                                    children: t.name,
+                                  }),
+                                ],
+                              }),
+                              a.jsxs("p", {
+                                children: [
+                                  a.jsx("span", {
+                                    className: "font-bold text-stone-600 mr-2",
+                                    children: "Curso de Egreso / Actual:",
+                                  }),
+                                  " ",
+                                  a.jsx("span", {
+                                    className: "font-bold text-stone-900",
+                                    children: t.level || t.taller,
+                                  }),
+                                ],
+                              }),
+                            ],
+                          }),
+                          a.jsxs("div", {
+                            children: [
+                              a.jsxs("p", {
+                                children: [
+                                  a.jsx("span", {
+                                    className: "font-bold text-stone-600 mr-2",
+                                    children: "Sede:",
+                                  }),
+                                  " ",
+                                  a.jsx("span", {
+                                    className: "font-bold text-stone-900",
+                                    children:
+                                      (e == null ? void 0 : e.nombre) || t.sede,
+                                  }),
+                                ],
+                              }),
+                              a.jsxs("p", {
+                                children: [
+                                  a.jsx("span", {
+                                    className: "font-bold text-stone-600 mr-2",
+                                    children: "Documento (D.N.I.):",
+                                  }),
+                                  " ",
+                                  a.jsx("span", {
+                                    className: "font-bold text-stone-900",
+                                    children: t.dni,
+                                  }),
+                                ],
+                              }),
+                              a.jsxs("p", {
+                                children: [
+                                  a.jsx("span", {
+                                    className: "font-bold text-stone-600 mr-2",
+                                    children: "Ciclo Lectivo:",
+                                  }),
+                                  " ",
+                                  a.jsx("span", {
+                                    className: "font-bold text-stone-900",
+                                    children: new Date().getFullYear(),
+                                  }),
+                                ],
+                              }),
+                            ],
+                          }),
+                        ],
+                      }),
+                    }),
+                    a.jsx("div", {
+                      className:
+                        "grid grid-cols-2 gap-x-4 gap-y-1 print:gap-x-4 print:gap-y-0.5 mt-2",
+                      children: (() => {
+                        const m = (
+                          (t.level || "") +
+                          " " +
+                          (t.taller || "") +
+                          " " +
+                          (t.promocionadoDe || "")
+                        ).toLowerCase();
+                        let g = "all";
+                        m.includes("infantil")
+                          ? (g = "infantil")
+                          : (m.includes("instructorado") ||
+                              m.includes("adultos")) &&
+                            (g = "instructorado");
+                        const _ = s.filter((P) => {
+                            const k = P.curso_nivel.toLowerCase();
+                            return !/^([123]|diploma)/i.test(k) ||
+                              k.includes("3er aÃ±o superior")
+                              ? !1
+                              : g === "infantil"
+                                ? k.includes("infantil")
+                                : g === "instructorado"
+                                  ? k.includes("instructorado")
+                                  : !0;
+                          }),
+                          T = [];
+                        return (
+                          _.forEach((P) => {
+                            const k = P.curso_nivel,
+                              L = k.replace(/[.#$\[\]\/]/g, "_");
+                            (T.push(
+                              a.jsxs(
+                                "div",
+                                {
+                                  className: "print:break-inside-avoid",
+                                  children: [
+                                    a.jsx("h3", {
+                                      className:
+                                        "font-black text-[9px] uppercase tracking-wider text-stone-900 mb-0",
+                                      children: k,
+                                    }),
+                                    a.jsxs("table", {
+                                      className:
+                                        "w-full text-left border-collapse border border-stone-800",
+                                      children: [
+                                        a.jsx("thead", {
+                                          children: a.jsxs("tr", {
+                                            className: "bg-stone-100",
+                                            children: [
+                                              a.jsx("th", {
+                                                className:
+                                                  "border border-stone-800 p-0.5 px-1 text-[8px] font-bold text-stone-900",
+                                                children: "Espacio Curricular",
+                                              }),
+                                              a.jsx("th", {
+                                                className:
+                                                  "border border-stone-800 p-0.5 px-1 text-[8px] font-bold text-stone-900 text-center w-12",
+                                                children: "Calif.",
+                                              }),
+                                            ],
+                                          }),
+                                        }),
+                                        a.jsx("tbody", {
+                                          children: r.map((E) => {
+                                            let b = u.find(
+                                              ($) =>
+                                                $.id === `${E.id}_${t.id}_${L}`,
+                                            );
+                                            !b &&
+                                              (t.level === k ||
+                                                t.promocionadoDe === k) &&
+                                              (b = u.find(
+                                                ($) =>
+                                                  $.id === `${E.id}_${t.id}`,
+                                              ));
+                                            let A = "â€”";
+                                            return (
+                                              b &&
+                                                b.score !== void 0 &&
+                                                b.score !== "" &&
+                                                (A = `${b.score}${d(b.score)}`),
+                                              a.jsxs(
+                                                "tr",
+                                                {
+                                                  children: [
+                                                    a.jsx("td", {
+                                                      className:
+                                                        "border border-stone-800 py-0.5 px-1 text-[7px] text-stone-800 font-medium",
+                                                      children: E.title,
+                                                    }),
+                                                    a.jsx("td", {
+                                                      className:
+                                                        "border border-stone-800 py-0.5 px-1 text-[7px] text-center font-bold text-stone-900",
+                                                      children: A,
+                                                    }),
+                                                  ],
+                                                },
+                                                E.id,
+                                              )
+                                            );
+                                          }),
+                                        }),
+                                      ],
+                                    }),
+                                  ],
+                                },
+                                k,
+                              ),
+                            ),
+                              k.toLowerCase().includes("diploma elemental") &&
+                                (T.push(
+                                  a.jsxs(
+                                    "div",
+                                    {
+                                      className: "print:break-inside-avoid",
+                                      children: [
+                                        a.jsx("h3", {
+                                          className:
+                                            "font-black text-[9px] uppercase tracking-wider text-stone-900 mb-0",
+                                          children:
+                                            "E.D.I. (Espacio Def. Institucional)",
+                                        }),
+                                        a.jsxs("table", {
+                                          className:
+                                            "w-full text-left border-collapse border border-stone-800",
+                                          children: [
+                                            a.jsx("thead", {
+                                              children: a.jsxs("tr", {
+                                                className: "bg-stone-100",
+                                                children: [
+                                                  a.jsx("th", {
+                                                    className:
+                                                      "border border-stone-800 p-0.5 px-1 text-[8px] font-bold text-stone-900",
+                                                    children:
+                                                      "Materia / Taller",
+                                                  }),
+                                                  a.jsx("th", {
+                                                    className:
+                                                      "border border-stone-800 p-0.5 px-1 text-[8px] font-bold text-stone-900 text-center w-12",
+                                                    children: "Calif.",
+                                                  }),
+                                                ],
+                                              }),
+                                            }),
+                                            a.jsx("tbody", {
+                                              children: [1, 2, 3, 4, 5].map(
+                                                (E) =>
+                                                  a.jsxs(
+                                                    "tr",
+                                                    {
+                                                      children: [
+                                                        a.jsx("td", {
+                                                          className:
+                                                            "border border-stone-800 py-0.5 px-1 text-[7px] text-stone-800 font-medium h-[11px] text-center",
+                                                          children: "â€”",
+                                                        }),
+                                                        a.jsx("td", {
+                                                          className:
+                                                            "border border-stone-800 py-0.5 px-1 text-[7px] text-center font-bold text-stone-900 h-[11px]",
+                                                          children: "â€”",
+                                                        }),
+                                                      ],
+                                                    },
+                                                    E,
+                                                  ),
+                                              ),
+                                            }),
+                                          ],
+                                        }),
+                                      ],
+                                    },
+                                    `${k}-edi`,
+                                  ),
+                                ),
+                                T.push(
+                                  a.jsx(
+                                    "div",
+                                    {
+                                      className:
+                                        "print:break-inside-avoid col-span-2 bg-stone-100 border border-stone-800 p-1 mt-1 mb-1 text-center shadow-sm",
+                                      children: a.jsx("h3", {
+                                        className:
+                                          "font-black text-[10px] uppercase tracking-widest text-stone-900",
+                                        children:
+                                          "OTORGA CERTIFICADO DE: MAESTRO ELEMENTAL",
+                                      }),
+                                    },
+                                    `${k}-otorga`,
+                                  ),
+                                )),
+                              k.toLowerCase().includes("diploma superior") &&
+                                (T.push(
+                                  a.jsxs(
+                                    "div",
+                                    {
+                                      className: "print:break-inside-avoid",
+                                      children: [
+                                        a.jsx("h3", {
+                                          className:
+                                            "font-black text-[9px] uppercase tracking-wider text-stone-900 mb-0",
+                                          children:
+                                            "E.D.I. (Espacio Def. Institucional)",
+                                        }),
+                                        a.jsxs("table", {
+                                          className:
+                                            "w-full text-left border-collapse border border-stone-800",
+                                          children: [
+                                            a.jsx("thead", {
+                                              children: a.jsxs("tr", {
+                                                className: "bg-stone-100",
+                                                children: [
+                                                  a.jsx("th", {
+                                                    className:
+                                                      "border border-stone-800 p-0.5 px-1 text-[8px] font-bold text-stone-900",
+                                                    children:
+                                                      "Materia / Taller",
+                                                  }),
+                                                  a.jsx("th", {
+                                                    className:
+                                                      "border border-stone-800 p-0.5 px-1 text-[8px] font-bold text-stone-900 text-center w-12",
+                                                    children: "Calif.",
+                                                  }),
+                                                ],
+                                              }),
+                                            }),
+                                            a.jsx("tbody", {
+                                              children: [1, 2, 3, 4, 5].map(
+                                                (E) =>
+                                                  a.jsxs(
+                                                    "tr",
+                                                    {
+                                                      children: [
+                                                        a.jsx("td", {
+                                                          className:
+                                                            "border border-stone-800 py-0.5 px-1 text-[7px] text-stone-800 font-medium h-[11px] text-center",
+                                                          children: "â€”",
+                                                        }),
+                                                        a.jsx("td", {
+                                                          className:
+                                                            "border border-stone-800 py-0.5 px-1 text-[7px] text-center font-bold text-stone-900 h-[11px]",
+                                                          children: "â€”",
+                                                        }),
+                                                      ],
+                                                    },
+                                                    E,
+                                                  ),
+                                              ),
+                                            }),
+                                          ],
+                                        }),
+                                      ],
+                                    },
+                                    `${k}-edi`,
+                                  ),
+                                ),
+                                T.push(
+                                  a.jsx(
+                                    "div",
+                                    {
+                                      className:
+                                        "print:break-inside-avoid col-span-2 bg-stone-100 border border-stone-800 p-1 mt-1 text-center shadow-sm",
+                                      children: a.jsx("h3", {
+                                        className:
+                                          "font-black text-[10px] uppercase tracking-widest text-stone-900",
+                                        children:
+                                          "OTORGA CERTIFICADO DE: INSTRUCTOR SUPERIOR",
+                                      }),
+                                    },
+                                    `${k}-otorga`,
+                                  ),
+                                ),
+                                T.push(
+                                  a.jsx(
+                                    "div",
+                                    {
+                                      className:
+                                        "print:break-inside-avoid col-span-2 h-16",
+                                    },
+                                    `${k}-lineas`,
+                                  ),
+                                )));
+                          }),
+                          T
+                        );
+                      })(),
+                    }),
+                    a.jsxs("div", {
+                      className: "mt-2 print:mt-1 flex gap-2",
+                      children: [
+                        a.jsxs("div", {
+                          className: "flex-1 flex flex-col justify-end pb-1",
+                          children: [
+                            a.jsx("p", {
+                              className:
+                                "text-[7px] font-medium text-stone-800 italic mb-2 max-w-[280px]",
+                              children:
+                                "El presente certificado acredita la trayectoria acadÃ©mica del estudiante registrada ante las autoridades de esta instituciÃ³n educativa.",
+                            }),
+                            a.jsxs("div", {
+                              className:
+                                "text-[7px] font-bold text-stone-800 leading-loose",
+                              children: [
+                                a.jsx("p", {
+                                  children:
+                                    "Registrado en el Libro de TÃ­tulos y Certificados NÂº ______",
+                                }),
+                                a.jsx("p", { children: "Folio NÂº ______" }),
+                                a.jsx("p", { children: "Acta NÂº ______" }),
+                              ],
+                            }),
+                          ],
+                        }),
+                        a.jsx("div", {
+                          className:
+                            "border border-stone-800 rounded-lg p-2 w-[240px] text-center print:break-inside-avoid",
+                          children: a.jsxs("div", {
+                            className: "flex justify-between items-end pt-8",
+                            children: [
+                              a.jsxs("div", {
+                                className: "text-center",
+                                children: [
+                                  a.jsx("div", {
+                                    className:
+                                      "w-16 border-t border-stone-800 mx-auto mt-2",
+                                  }),
+                                  a.jsx("p", {
+                                    className:
+                                      "text-[7px] font-bold text-stone-900 uppercase mt-0.5",
+                                    children: "Sello Inst.",
+                                  }),
+                                ],
+                              }),
+                              a.jsxs("div", {
+                                className: "text-center",
+                                children: [
+                                  a.jsx("div", { className: "h-4" }),
+                                  a.jsx("div", {

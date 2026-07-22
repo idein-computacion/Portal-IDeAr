@@ -1,0 +1,350 @@
+﻿        });
+    }
+    if (r.length === 0) {
+      let _ = t.concept || "Mensualidad";
+      (u && !_.includes(u) && (_ = `${_} (${u})`),
+        r.push({
+          label: _,
+          subtitle: `PerÃ­odo: ${g} | VÃ­a ${t.method}`,
+          amount: t.amount,
+        }));
+    }
+    return r;
+  },
+  JA = ({
+    student: t,
+    configLevels: e,
+    allLevels: n,
+    mesasGrades: r,
+    mesasColumns: s,
+    onClose: i,
+    onUpdateGrade: o,
+    onToggleAbsent: c,
+    onOpenBoletinHistorial: u,
+    onOpenAnalitico: d,
+  }) => {
+    const m = n.indexOf(t.level),
+      g = e.filter((_) => {
+        const T = n.indexOf(_.curso_nivel);
+        return T !== -1 && T <= m;
+      });
+    return a.jsx("div", {
+      className:
+        "fixed inset-0 bg-stone-900/80 z-[100] flex flex-col items-center justify-center p-4 animate-fadeIn no-print",
+      children: a.jsxs("div", {
+        className:
+          "bg-white rounded-3xl shadow-xl w-full max-w-5xl overflow-hidden flex flex-col",
+        style: { maxHeight: "90vh" },
+        children: [
+          a.jsxs("div", {
+            className:
+              "px-6 py-4 border-b border-stone-100 flex justify-between items-center bg-stone-50 flex-shrink-0",
+            children: [
+              a.jsxs("h3", {
+                className:
+                  "text-lg font-bold text-stone-800 flex items-center gap-2",
+                children: [
+                  a.jsx("i", { className: "fas fa-history text-amber-500" }),
+                  " Historial de Mesas",
+                  a.jsxs("span", {
+                    className: "text-sm font-semibold text-stone-400 uppercase",
+                    children: ["â€” ", t.name],
+                  }),
+                ],
+              }),
+              a.jsxs("div", {
+                className: "flex items-center gap-3",
+                children: [
+                  a.jsxs("button", {
+                    onClick: () => d(t),
+                    className:
+                      "bg-stone-800 hover:bg-stone-900 text-white px-3 py-1.5 rounded-lg font-bold text-xs shadow-sm transition-all flex items-center gap-2",
+                    children: [
+                      a.jsx("i", { className: "fas fa-file-contract" }),
+                      " Ver AnalÃ­tico",
+                    ],
+                  }),
+                  a.jsxs("button", {
+                    onClick: () => u(t),
+                    className:
+                      "bg-amber-600 hover:bg-amber-700 text-white px-3 py-1.5 rounded-lg font-bold text-xs shadow-sm transition-all flex items-center gap-2",
+                    children: [
+                      a.jsx("i", { className: "fas fa-file-invoice" }),
+                      " Ver BoletÃ­n Resumido",
+                    ],
+                  }),
+                  a.jsx("button", {
+                    onClick: i,
+                    className:
+                      "text-stone-400 hover:text-rose-500 transition-colors w-8 h-8 flex items-center justify-center rounded-full hover:bg-rose-50",
+                    children: a.jsx("i", { className: "fas fa-times" }),
+                  }),
+                ],
+              }),
+            ],
+          }),
+          a.jsxs("div", {
+            className: "p-4 overflow-y-auto space-y-2",
+            children: [
+              g.length === 0 &&
+                a.jsx("p", {
+                  className: "text-sm text-stone-400 text-center py-6 italic",
+                  children: "No hay niveles anteriores registrados.",
+                }),
+              g.map((_) => {
+                const T = _.curso_nivel.replace(/[.#$\[\]\/]/g, "_"),
+                  P =
+                    (r == null
+                      ? void 0
+                      : r.find((E) => E.id === `status_${t.id}_${T}`)) ||
+                    (r == null
+                      ? void 0
+                      : r.find((E) => E.id === `status_${t.id}`)),
+                  k = P ? P.isAbsent : !1,
+                  L =
+                    _.curso_nivel === t.level ||
+                    _.curso_nivel === t.promocionadoDe;
+                return a.jsx(
+                  "div",
+                  {
+                    className: `rounded-2xl border p-3 transition-colors ${L ? "border-amber-200 bg-amber-50/50" : "border-stone-100 bg-stone-50/30 hover:bg-stone-50"}`,
+                    children: a.jsxs("div", {
+                      className: "flex items-center gap-3 flex-wrap",
+                      children: [
+                        a.jsxs("div", {
+                          className:
+                            "flex items-center gap-2 min-w-[180px] flex-shrink-0",
+                          children: [
+                            a.jsx("button", {
+                              onClick: () => c(t.id, k, _.curso_nivel),
+                              className: `w-6 h-6 rounded flex-shrink-0 flex items-center justify-center transition-colors shadow-sm ${k ? "bg-rose-100 text-rose-600 border border-rose-200 hover:bg-rose-200" : "bg-emerald-100 text-emerald-600 border border-emerald-200 hover:bg-emerald-200"}`,
+                              title: k ? "Rinde" : "No Rinde",
+                              children: a.jsx("i", {
+                                className: `fas ${k ? "fa-times" : "fa-check"} text-[9px]`,
+                              }),
+                            }),
+                            a.jsxs("span", {
+                              className: `text-xs font-bold uppercase leading-tight ${L ? "text-amber-700" : "text-stone-600"}`,
+                              children: [
+                                _.curso_nivel,
+                                L &&
+                                  a.jsx("span", {
+                                    className:
+                                      "ml-1 text-[8px] bg-amber-200 text-amber-800 px-1 py-0.5 rounded font-black align-middle",
+                                    children: "Actual",
+                                  }),
+                              ],
+                            }),
+                          ],
+                        }),
+                        a.jsxs("div", {
+                          className: `flex items-center gap-1.5 flex-wrap ${k ? "opacity-40 pointer-events-none" : ""}`,
+                          children: [
+                            s == null
+                              ? void 0
+                              : s.map((E) => {
+                                  let b =
+                                    r == null
+                                      ? void 0
+                                      : r.find(
+                                          (B) =>
+                                            B.id === `${E.id}_${t.id}_${T}`,
+                                        );
+                                  !b &&
+                                    L &&
+                                    (b =
+                                      r == null
+                                        ? void 0
+                                        : r.find(
+                                            (B) => B.id === `${E.id}_${t.id}`,
+                                          ));
+                                  const A = b ? b.score : "";
+                                  let $ =
+                                    "border-stone-200 bg-white text-stone-700";
+                                  if (A !== "") {
+                                    const B = parseFloat(A);
+                                    B >= 7
+                                      ? ($ =
+                                          "border-emerald-400 bg-emerald-50 text-emerald-800")
+                                      : B >= 4
+                                        ? ($ =
+                                            "border-amber-400 bg-amber-50 text-amber-800")
+                                        : ($ =
+                                            "border-rose-400 bg-rose-50 text-rose-800");
+                                  }
+                                  return a.jsxs(
+                                    "div",
+                                    {
+                                      className:
+                                        "flex flex-col items-center gap-0.5",
+                                      children: [
+                                        a.jsx("span", {
+                                          className:
+                                            "text-[9px] text-stone-400 font-semibold uppercase leading-none",
+                                          children: E.title,
+                                        }),
+                                        a.jsx(
+                                          "input",
+                                          {
+                                            type: "number",
+                                            inputMode: "decimal",
+                                            defaultValue: A,
+                                            onBlur: (B) => {
+                                              B.target.value !== String(A) &&
+                                                o(
+                                                  t.id,
+                                                  E.id,
+                                                  B.target.value,
+                                                  _.curso_nivel,
+                                                  L,
+                                                );
+                                            },
+                                            onKeyDown: (B) => {
+                                              B.key === "Enter" &&
+                                                B.target.blur();
+                                            },
+                                            className: `w-11 h-7 text-center font-bold text-xs rounded-lg border-2 outline-none focus:ring-2 focus:ring-amber-400 transition-all ${$}`,
+                                            placeholder: "-",
+                                          },
+                                          `${E.id}-${_.curso_nivel}-${A}`,
+                                        ),
+                                      ],
+                                    },
+                                    E.id,
+                                  );
+                                }),
+                            (() => {
+                              const E =
+                                s == null
+                                  ? void 0
+                                  : s
+                                      .map(($) => {
+                                        let B =
+                                          r == null
+                                            ? void 0
+                                            : r.find(
+                                                (G) =>
+                                                  G.id ===
+                                                  `${$.id}_${t.id}_${T}`,
+                                              );
+                                        return (
+                                          !B &&
+                                            L &&
+                                            (B =
+                                              r == null
+                                                ? void 0
+                                                : r.find(
+                                                    (G) =>
+                                                      G.id ===
+                                                      `${$.id}_${t.id}`,
+                                                  )),
+                                          B ? parseFloat(B.score) : null
+                                        );
+                                      })
+                                      .filter(($) => $ !== null && !isNaN($));
+                              if (!E || E.length === 0) return null;
+                              const b = E.reduce(($, B) => $ + B, 0) / E.length,
+                                A =
+                                  b >= 7
+                                    ? "bg-emerald-100 text-emerald-800 border-emerald-300"
+                                    : b >= 4
+                                      ? "bg-amber-100 text-amber-800 border-amber-300"
+                                      : "bg-rose-100 text-rose-800 border-rose-300";
+                              return a.jsxs("div", {
+                                className:
+                                  "flex flex-col items-center gap-0.5 ml-1",
+                                children: [
+                                  a.jsx("span", {
+                                    className:
+                                      "text-[9px] text-stone-400 font-semibold uppercase leading-none",
+                                    children: "Prom.",
+                                  }),
+                                  a.jsx("span", {
+                                    className: `w-11 h-7 flex items-center justify-center font-black text-xs rounded-lg border-2 ${A}`,
+                                    children: b.toFixed(1),
+                                  }),
+                                ],
+                              });
+                            })(),
+                          ],
+                        }),
+                      ],
+                    }),
+                  },
+                  _.id,
+                );
+              }),
+            ],
+          }),
+        ],
+      }),
+    });
+  },
+  ZA = ({
+    student: t,
+    sedeObj: e,
+    grades: n,
+    gradeColumns: r,
+    mesasGrades: s,
+    mesasColumns: i,
+    attendance: o,
+    onClose: c,
+    profesorName: u,
+  }) => {
+    Q.useEffect(() => {
+      const L = document.title,
+        E = (t.level || t.taller || "SinNivel").replace(/[/\\?%*:|"<>]/g, "-"),
+        b = t.name ? t.name.split(",")[0].trim() : "";
+      return (
+        (document.title = `IDeAr - ${E} - ${b}`),
+        () => {
+          document.title = L;
+        }
+      );
+    }, [t]);
+    const d = o.filter((L) => L.studentId === t.id),
+      m = d.filter((L) => L.status === "present").length,
+      g = d.filter((L) => L.status === "absent").length,
+      _ = m + g,
+      T = _ > 0 ? Math.round((m / _) * 100) : 0,
+      P = n.filter((L) => L.studentId === t.id),
+      k = s.filter((L) => L.studentId === t.id);
+    return a.jsxs("div", {
+      className:
+        "fixed inset-0 bg-stone-900/80 z-[100] flex flex-col print:absolute print:bg-white print:inset-0",
+      children: [
+        a.jsxs("div", {
+          className:
+            "flex justify-end p-4 gap-4 bg-stone-900 shadow-xl no-print",
+          children: [
+            a.jsxs("button", {
+              onClick: () => window.print(),
+              className:
+                "bg-amber-600 hover:bg-amber-700 text-white px-6 py-2 rounded-xl font-bold shadow-md transition-all flex items-center gap-2",
+              children: [
+                a.jsx("i", { className: "fas fa-print" }),
+                " Imprimir BoletÃ­n",
+              ],
+            }),
+            a.jsxs("button", {
+              onClick: c,
+              className:
+                "bg-stone-700 hover:bg-stone-600 text-white px-6 py-2 rounded-xl font-bold transition-all flex items-center gap-2",
+              children: [a.jsx("i", { className: "fas fa-times" }), " Cerrar"],
+            }),
+          ],
+        }),
+        a.jsx("div", {
+          className:
+            "flex-1 overflow-y-auto p-4 md:p-8 flex justify-center print:overflow-visible print:p-0 print:block",
+          children: a.jsxs("div", {
+            id: "boletin-print-area",
+            className:
+              "bg-white text-stone-900 p-4 max-w-[210mm] w-full mx-auto shadow-2xl relative min-h-[130mm] print:min-h-[130mm] print:h-[130mm] print:shadow-none print:m-0 print:max-w-none print:w-full flex flex-col overflow-hidden",
+            children: [
+              a.jsx("div", {
+                className:
+                  "absolute inset-0 pointer-events-none flex items-center justify-center pb-4 print:pb-4 opacity-[0.10] print:opacity-[0.10] z-0",
+                children: a.jsx("img", {
+                  src: "/logo.png",
+                  alt: "",

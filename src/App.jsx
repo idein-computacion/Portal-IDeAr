@@ -5,9 +5,11 @@ import { ref, set, get, remove, onValue, off, update } from 'firebase/database';
 import DashboardRecibos from './components/DashboardRecibos';
 import Config from './components/Config';
 import PerfilProfesor from './components/PerfilProfesor';
+import BoletinHistorialPreview from './components/BoletinHistorialPreview';
+import CertificadoAnaliticoPreview from './components/CertificadoAnaliticoPreview';
 
 import { formatDate } from './utils/formatters';
-import { getHistoricalValues, MONTHS_ORDER } from './utils/mathHelpers';
+import { getHistoricalValues, MONTHS_ORDER, isMonthInactive } from './utils/mathHelpers';
 
 const getReceiptBreakdown = (receipt, configLevels, students) => {
     const items = [];
@@ -18,9 +20,28 @@ const getReceiptBreakdown = (receipt, configLevels, students) => {
     const excess = receipt.excessPaid || 0;
     const period = receipt.period;
 
+    // Obtener el año correspondiente a este pago
+    let yearStr = "";
+    const pPartsInitial = period.split(' ');
+    if (pPartsInitial.length > 1 && /\d{4}$/.test(pPartsInitial[pPartsInitial.length - 1])) {
+        yearStr = pPartsInitial[pPartsInitial.length - 1];
+    } else {
+        const studentObj = students?.find(s => s.id === receipt.studentId);
+        if (studentObj && studentObj.fecha_inicio) {
+            yearStr = studentObj.fecha_inicio.substring(0, 4);
+        } else if (receipt.date && receipt.date.length >= 4) {
+            yearStr = receipt.date.substring(0, 4);
+        }
+    }
+
+    const hasYearRegex = /\d{4}$/;
+    const periodWithYear = (yearStr && !hasYearRegex.test(period)) 
+        ? `${period} ${yearStr}` 
+        : period;
+
     if (insc > 0) {
         items.push({
-            label: "Matrícula / Inscripción",
+            label: yearStr ? `Matrícula / Inscripción (${yearStr})` : "Matrícula / Inscripción",
             subtitle: `Pago único inicial | Vía ${receipt.method}`,
             amount: insc
         });
@@ -28,14 +49,13 @@ const getReceiptBreakdown = (receipt, configLevels, students) => {
 
     if (cuota > 0) {
         items.push({
-            label: `Cuota Mensual (${period})`,
+            label: `Cuota Mensual (${periodWithYear})`,
             subtitle: `Servicio de enseñanza | Vía ${receipt.method}`,
             amount: cuota
         });
     }
 
     if (excess > 0) {
-        // Encontrar valorCuota
         let valorCuota = receipt.cuotaValue;
         if (!valorCuota) {
             const studentObj = students?.find(s => s.id === receipt.studentId);
@@ -51,21 +71,38 @@ const getReceiptBreakdown = (receipt, configLevels, students) => {
         }
 
         let remainingExcess = excess;
-        let currentMonthIdx = Math.max(1, MONTHS_ORDER.indexOf(period));
+        
+        const pParts = period.split(' ');
+        let currentMonthIdx = MONTHS_ORDER.indexOf(pParts[0]);
+        if (currentMonthIdx === -1) currentMonthIdx = 1; // Fallback a febrero para que empiece en marzo
+        
+        let currentLoopYear = pParts.length > 1 ? parseInt(pParts[1], 10) : (yearStr ? parseInt(yearStr, 10) : new Date().getFullYear());
 
-        while (remainingExcess > 0 && currentMonthIdx < MONTHS_ORDER.length - 1) {
+        while (remainingExcess > 0) {
             currentMonthIdx++;
+            if (currentMonthIdx > 11) {
+                currentMonthIdx = 0; // Enero del próximo año
+                currentLoopYear++;
+            }
+            
             const nextMonth = MONTHS_ORDER[currentMonthIdx];
+            // Excluir Enero y Febrero temporalmente a menos que la cuota sea pagadera en esos meses
+            // Por defecto las clases son de Marzo a Diciembre
+            if (currentMonthIdx < 2 && nextMonth !== "Matrícula" && nextMonth !== "Examen") {
+                continue;
+            }
+
+            const nextMonthWithYear = `${nextMonth} ${currentLoopYear}`;
             if (remainingExcess >= valorCuota) {
                 items.push({
-                    label: `Cuota Mensual (${nextMonth})`,
+                    label: `Cuota Mensual (${nextMonthWithYear})`,
                     subtitle: `Mensualidad | Vía ${receipt.method}`,
                     amount: valorCuota
                 });
                 remainingExcess -= valorCuota;
             } else {
                 items.push({
-                    label: `Parte de pago para el mes de ${nextMonth}`,
+                    label: `Parte de pago para el mes de ${nextMonthWithYear}`,
                     subtitle: `Acreditado automáticamente | Vía ${receipt.method}`,
                     amount: remainingExcess
                 });
@@ -84,9 +121,13 @@ const getReceiptBreakdown = (receipt, configLevels, students) => {
 
     // Fallback si no tiene desgloses
     if (items.length === 0) {
+        let labelConcept = receipt.concept || "Mensualidad";
+        if (yearStr && !labelConcept.includes(yearStr)) {
+            labelConcept = `${labelConcept} (${yearStr})`;
+        }
         items.push({
-            label: receipt.concept || "Mensualidad",
-            subtitle: `Período: ${receipt.period} | Vía ${receipt.method}`,
+            label: labelConcept,
+            subtitle: `Período: ${periodWithYear} | Vía ${receipt.method}`,
             amount: receipt.amount
         });
     }
@@ -94,7 +135,133 @@ const getReceiptBreakdown = (receipt, configLevels, students) => {
     return items;
 };
 
+const HistorialModal = ({ student, configLevels, allLevels, mesasGrades, mesasColumns, onClose, onUpdateGrade, onToggleAbsent, onOpenBoletinHistorial, onOpenAnalitico }) => {
+    const studentLevelIdx = allLevels.indexOf(student.level);
+    const relevantLevels = configLevels.filter(c => {
+        const idx = allLevels.indexOf(c.curso_nivel);
+        return idx !== -1 && idx <= studentLevelIdx;
+    });
+
+    return (
+        <div className="fixed inset-0 bg-stone-900/80 z-[100] flex flex-col items-center justify-center p-4 animate-fadeIn no-print">
+            <div className="bg-white rounded-3xl shadow-xl w-full max-w-5xl overflow-hidden flex flex-col" style={{maxHeight:'90vh'}}>
+                <div className="px-6 py-4 border-b border-stone-100 flex justify-between items-center bg-stone-50 flex-shrink-0">
+                    <h3 className="text-lg font-bold text-stone-800 flex items-center gap-2">
+                        <i className="fas fa-history text-amber-500"></i> Historial de Mesas
+                        <span className="text-sm font-semibold text-stone-400 uppercase">&mdash; {student.name}</span>
+                    </h3>
+                    <div className="flex items-center gap-3">
+                        <button onClick={() => onOpenAnalitico(student)} className="bg-stone-800 hover:bg-stone-900 text-white px-3 py-1.5 rounded-lg font-bold text-xs shadow-sm transition-all flex items-center gap-2">
+                            <i className="fas fa-file-contract"></i> Ver Analítico
+                        </button>
+                        <button onClick={() => onOpenBoletinHistorial(student)} className="bg-amber-600 hover:bg-amber-700 text-white px-3 py-1.5 rounded-lg font-bold text-xs shadow-sm transition-all flex items-center gap-2">
+                            <i className="fas fa-file-invoice"></i> Ver Boletín Resumido
+                        </button>
+                        <button onClick={onClose} className="text-stone-400 hover:text-rose-500 transition-colors w-8 h-8 flex items-center justify-center rounded-full hover:bg-rose-50">
+                            <i className="fas fa-times"></i>
+                        </button>
+                    </div>
+                </div>
+                <div className="p-4 overflow-y-auto space-y-2">
+                    {relevantLevels.length === 0 && (
+                        <p className="text-sm text-stone-400 text-center py-6 italic">No hay niveles anteriores registrados.</p>
+                    )}
+                    {relevantLevels.map(c => {
+                        const safeLevel = c.curso_nivel.replace(/[.#$\[\]\/]/g, "_");
+                        const statusRecord = mesasGrades?.find(g => g.id === `status_${student.id}_${safeLevel}`)
+                                            || mesasGrades?.find(g => g.id === `status_${student.id}`);
+                        const isAbsent = statusRecord ? statusRecord.isAbsent : false;
+                        const isCurrent = c.curso_nivel === student.level || c.curso_nivel === student.promocionadoDe;
+                        return (
+                            <div key={c.id} className={`rounded-2xl border p-3 transition-colors ${isCurrent ? 'border-amber-200 bg-amber-50/50' : 'border-stone-100 bg-stone-50/30 hover:bg-stone-50'}`}>
+                                <div className="flex items-center gap-3 flex-wrap">
+                                    <div className="flex items-center gap-2 min-w-[180px] flex-shrink-0">
+                                        <button
+                                            onClick={() => onToggleAbsent(student.id, isAbsent, c.curso_nivel)}
+                                            className={`w-6 h-6 rounded flex-shrink-0 flex items-center justify-center transition-colors shadow-sm ${
+                                                isAbsent ? 'bg-rose-100 text-rose-600 border border-rose-200 hover:bg-rose-200' : 'bg-emerald-100 text-emerald-600 border border-emerald-200 hover:bg-emerald-200'
+                                            }`}
+                                            title={isAbsent ? "Rinde" : "No Rinde"}
+                                        >
+                                            <i className={`fas ${isAbsent ? 'fa-times' : 'fa-check'} text-[9px]`}></i>
+                                        </button>
+                                        <span className={`text-xs font-bold uppercase leading-tight ${isCurrent ? 'text-amber-700' : 'text-stone-600'}`}>
+                                            {c.curso_nivel}
+                                            {isCurrent && <span className="ml-1 text-[8px] bg-amber-200 text-amber-800 px-1 py-0.5 rounded font-black align-middle">Actual</span>}
+                                        </span>
+                                    </div>
+                                    <div className={`flex items-center gap-1.5 flex-wrap ${isAbsent ? 'opacity-40 pointer-events-none' : ''}`}>
+                                        {mesasColumns?.map(col => {
+                                            // primary key: level-suffixed (always used by historial handler)
+                                            let grade = mesasGrades?.find(g => g.id === `${col.id}_${student.id}_${safeLevel}`);
+                                            // fallback: plain key (used by main table for current level)
+                                            if (!grade && isCurrent) grade = mesasGrades?.find(g => g.id === `${col.id}_${student.id}`);
+                                            const scoreVal = grade ? grade.score : "";
+                                            let colorClass = "border-stone-200 bg-white text-stone-700";
+                                            if (scoreVal !== "") {
+                                                const s = parseFloat(scoreVal);
+                                                if (s >= 7) colorClass = "border-emerald-400 bg-emerald-50 text-emerald-800";
+                                                else if (s >= 4) colorClass = "border-amber-400 bg-amber-50 text-amber-800";
+                                                else colorClass = "border-rose-400 bg-rose-50 text-rose-800";
+                                            }
+                                            return (
+                                                <div key={col.id} className="flex flex-col items-center gap-0.5">
+                                                    <span className="text-[9px] text-stone-400 font-semibold uppercase leading-none">{col.title}</span>
+                                                    <input
+                                                        type="number"
+                                                        inputMode="decimal"
+                                                        defaultValue={scoreVal}
+                                                        key={`${col.id}-${c.curso_nivel}-${scoreVal}`}
+                                                        onBlur={(e) => {
+                                                            if (e.target.value !== String(scoreVal)) {
+                                                                onUpdateGrade(student.id, col.id, e.target.value, c.curso_nivel, isCurrent);
+                                                            }
+                                                        }}
+                                                        onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
+                                                        className={`w-11 h-7 text-center font-bold text-xs rounded-lg border-2 outline-none focus:ring-2 focus:ring-amber-400 transition-all ${colorClass}`}
+                                                        placeholder="-"
+                                                    />
+                                                </div>
+                                            );
+                                        })}
+                                        {(() => {
+                                            const scores = mesasColumns?.map(col => {
+                                                let g = mesasGrades?.find(gr => gr.id === `${col.id}_${student.id}_${safeLevel}`);
+                                                if (!g && isCurrent) g = mesasGrades?.find(gr => gr.id === `${col.id}_${student.id}`);
+                                                return g ? parseFloat(g.score) : null;
+                                            }).filter(s => s !== null && !isNaN(s));
+                                            if (!scores || scores.length === 0) return null;
+                                            const avg = scores.reduce((a, b) => a + b, 0) / scores.length;
+                                            const avgColor = avg >= 7 ? 'bg-emerald-100 text-emerald-800 border-emerald-300' : avg >= 4 ? 'bg-amber-100 text-amber-800 border-amber-300' : 'bg-rose-100 text-rose-800 border-rose-300';
+                                            return (
+                                                <div className="flex flex-col items-center gap-0.5 ml-1">
+                                                    <span className="text-[9px] text-stone-400 font-semibold uppercase leading-none">Prom.</span>
+                                                    <span className={`w-11 h-7 flex items-center justify-center font-black text-xs rounded-lg border-2 ${avgColor}`}>{avg.toFixed(1)}</span>
+                                                </div>
+                                            );
+                                        })()}
+                                    </div>
+                                </div>
+                            </div>
+                        );
+                    })}
+                </div>
+            </div>
+        </div>
+    );
+};
+
 const BoletinPreview = ({ student, sedeObj, grades, gradeColumns, mesasGrades, mesasColumns, attendance, onClose, profesorName }) => {
+    useEffect(() => {
+        const originalTitle = document.title;
+        const safeLevel = (student.level || student.taller || 'SinNivel').replace(/[/\\?%*:|"<>]/g, '-');
+        const surname = student.name ? student.name.split(',')[0].trim() : '';
+        document.title = `IDeAr - ${safeLevel} - ${surname}`;
+        return () => {
+            document.title = originalTitle;
+        };
+    }, [student]);
+
     const attRecords = attendance.filter(a => a.studentId === student.id);
     const presentCount = attRecords.filter(a => a.status === 'present').length;
     const absentCount = attRecords.filter(a => a.status === 'absent').length;
@@ -116,9 +283,15 @@ const BoletinPreview = ({ student, sedeObj, grades, gradeColumns, mesasGrades, m
             </div>
             
             <div className="flex-1 overflow-y-auto p-4 md:p-8 flex justify-center print:overflow-visible print:p-0 print:block">
-                <div id="boletin-print-area" className="bg-white text-stone-900 p-8 max-w-[210mm] w-full mx-auto shadow-2xl relative min-h-[297mm] print:min-h-0 print:shadow-none print:m-0 print:max-w-none print:w-full flex flex-col">
-                    <div>
-                        <div className="flex justify-between items-center border-b-2 border-stone-800 pb-2 mb-2 w-full gap-2">
+                <div id="boletin-print-area" className="bg-white text-stone-900 p-4 max-w-[210mm] w-full mx-auto shadow-2xl relative min-h-[130mm] print:min-h-[130mm] print:h-[130mm] print:shadow-none print:m-0 print:max-w-none print:w-full flex flex-col overflow-hidden">
+                    
+                    {/* WATERMARK */}
+                    <div className="absolute inset-0 pointer-events-none flex items-center justify-center pb-4 print:pb-4 opacity-[0.10] print:opacity-[0.10] z-0">
+                        <img src="/logo.png" alt="" className="w-[65%] max-w-[480px] object-contain grayscale" />
+                    </div>
+
+                    <div className="relative z-10 flex flex-col flex-1">
+                        <div className="flex justify-between items-center border-b-2 border-stone-800 pb-1 mb-1 w-full gap-2">
                             <div className="flex flex-col items-start whitespace-nowrap">
                                 <img src="/logo_1.png" alt="Portal IDeAr" className="h-10 object-contain mb-0.5" />
                                 <p className="text-[7px] font-bold text-stone-400">Registro SPEPM 213/21</p>
@@ -135,11 +308,11 @@ const BoletinPreview = ({ student, sedeObj, grades, gradeColumns, mesasGrades, m
                             </div>
                         </div>
 
-                    <div className="text-center mb-2">
+                    <div className="text-center mb-1">
                         <h3 className="text-lg font-black uppercase text-stone-800 tracking-widest">Boletín de Calificaciones</h3>
                     </div>
 
-                    <div className="bg-stone-50 border-2 border-stone-200 p-2 rounded-lg mb-2">
+                    <div className="bg-stone-50/40 border-2 border-stone-200 p-1.5 rounded-lg mb-1">
                         <div className="grid grid-cols-2 gap-2 text-[10px]">
                             <div>
                                 <p className="mb-0.5"><span className="font-bold text-stone-500 uppercase mr-1">Alumno:</span> <span className="font-bold text-xs text-stone-800 uppercase">{student.name}</span></p>
@@ -152,18 +325,18 @@ const BoletinPreview = ({ student, sedeObj, grades, gradeColumns, mesasGrades, m
                         </div>
                     </div>
 
-                    <div className="mb-2">
+                    <div className="mb-1">
                         <h4 className="text-[11px] font-bold text-stone-800 uppercase mb-1">Calificaciones de Cursada</h4>
                         {(!gradeColumns || gradeColumns.length === 0) ? (
                             <p className="text-xs text-stone-400 italic">No hay calificaciones registradas este año.</p>
                         ) : (
                             <table className="w-full text-xs text-left border-collapse border-2 border-stone-200">
                                 <thead>
-                                    <tr className="bg-stone-100">
+                                    <tr className="bg-stone-100/50">
                                         {gradeColumns.map(col => (
                                             <th key={col.id} className="border-2 border-stone-200 p-1 text-center uppercase text-[8px] text-stone-600 font-bold">{col.title}</th>
                                         ))}
-                                        <th className="border-2 border-stone-200 p-1 text-center uppercase text-[8px] text-stone-800 font-black bg-stone-200">Promedio Final</th>
+                                        <th className="border-2 border-stone-200 p-1 text-center uppercase text-[8px] text-stone-800 font-black bg-stone-200/50">Promedio Final</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -191,21 +364,23 @@ const BoletinPreview = ({ student, sedeObj, grades, gradeColumns, mesasGrades, m
                     </div>
 
                     {mesasColumns && mesasColumns.length > 0 && (
-                        <div className="mb-2">
+                        <div className="mb-1">
                             <h4 className="text-[11px] font-bold text-stone-800 uppercase mb-1">Mesa de Examen Anual</h4>
                             <table className="w-full text-xs text-left border-collapse border-2 border-stone-200">
                                 <thead>
-                                    <tr className="bg-stone-100">
+                                    <tr className="bg-stone-100/50">
                                         {mesasColumns.map(col => (
                                             <th key={col.id} className="border-2 border-stone-200 p-1 text-center uppercase text-[8px] text-stone-600 font-bold">{col.title}</th>
                                         ))}
-                                        <th className="border-2 border-stone-200 p-1 text-center uppercase text-[8px] text-stone-800 font-black bg-stone-200">Nota Final</th>
+                                        <th className="border-2 border-stone-200 p-1 text-center uppercase text-[8px] text-stone-800 font-black bg-stone-200/50">Final</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     <tr>
                                         {mesasColumns.map(col => {
-                                            const g = studentMesasGrades.find(gr => gr.columnId === col.id);
+                                            const safeLevel = (student.level || student.taller || "Desconocido").replace(/[.#$\[\]]/g, "_").replace(/\//g, "_");
+                                            let g = studentMesasGrades.find(gr => gr.id === `${col.id}_${student.id}_${safeLevel}`);
+                                            if (!g) g = studentMesasGrades.find(gr => gr.id === `${col.id}_${student.id}`);
                                             return (
                                                 <td key={col.id} className="border-2 border-stone-200 py-0.5 px-1 text-center font-bold text-stone-800 text-sm">
                                                     {g ? g.score : '-'}
@@ -214,7 +389,12 @@ const BoletinPreview = ({ student, sedeObj, grades, gradeColumns, mesasGrades, m
                                         })}
                                         <td className="border-2 border-stone-200 py-0.5 px-1 text-center font-black text-stone-900 bg-stone-100 text-base">
                                             {(() => {
-                                                const scores = mesasColumns.map(c => studentMesasGrades.find(gr => gr.columnId === c.id)?.score).filter(s => s !== undefined && s !== null && !isNaN(s));
+                                                const scores = mesasColumns.map(c => {
+                                                    const safeLevel = (student.level || student.taller || "Desconocido").replace(/[.#$\[\]]/g, "_").replace(/\//g, "_");
+                                                    let gr = studentMesasGrades.find(g => g.id === `${c.id}_${student.id}_${safeLevel}`);
+                                                    if (!gr) gr = studentMesasGrades.find(g => g.id === `${c.id}_${student.id}`);
+                                                    return gr?.score;
+                                                }).filter(s => s !== undefined && s !== null && !isNaN(s));
                                                 if (scores.length === 0) return '-';
                                                 const avg = scores.reduce((a,b) => a + Number(b), 0) / scores.length;
                                                 return avg.toFixed(2);
@@ -226,50 +406,47 @@ const BoletinPreview = ({ student, sedeObj, grades, gradeColumns, mesasGrades, m
                         </div>
                     )}
 
-                    <div className="mb-2">
-                        <h4 className="text-[11px] font-bold text-stone-800 uppercase mb-1">Resumen de Asistencias</h4>
-                        <div className="grid grid-cols-4 gap-2">
-                            <div className="border border-stone-200 rounded p-0.5 text-center bg-transparent">
-                                <p className="text-[7px] font-bold text-stone-500 uppercase leading-none mb-0.5 mt-0.5">Total Clases</p>
-                                <p className="text-xs font-black text-stone-700 leading-none mb-0.5">{totalAtt}</p>
+                    <div className="mb-1 flex items-center justify-between bg-stone-50/50 border border-stone-200 px-2 py-0.5 rounded-lg">
+                        <h4 className="text-[9px] font-bold text-stone-800 uppercase">Resumen de Asistencias</h4>
+                        <div className="flex gap-4 items-center">
+                            <div className="flex items-center gap-1">
+                                <p className="text-[8px] font-bold text-stone-500 uppercase">Total:</p>
+                                <p className="text-xs font-black text-stone-800">{totalAtt}</p>
                             </div>
-                            <div className="border border-stone-200 rounded p-0.5 text-center bg-transparent">
-                                <p className="text-[7px] font-bold text-amber-700 uppercase leading-none mb-0.5 mt-0.5">Presentes</p>
-                                <p className="text-xs font-black text-amber-800 leading-none mb-0.5">{presentCount}</p>
+                            <div className="flex items-center gap-1 border-l border-stone-200 pl-2">
+                                <p className="text-[8px] font-bold text-stone-500 uppercase">Presentes:</p>
+                                <p className="text-xs font-black text-emerald-600">{presentCount}</p>
                             </div>
-                            <div className="border border-stone-200 rounded p-0.5 text-center bg-transparent">
-                                <p className="text-[7px] font-bold text-stone-500 uppercase leading-none mb-0.5 mt-0.5">Ausentes</p>
-                                <p className="text-xs font-black text-stone-600 leading-none mb-0.5">{absentCount}</p>
+                            <div className="flex items-center gap-1 border-l border-stone-200 pl-2">
+                                <p className="text-[8px] font-bold text-stone-500 uppercase">Ausentes:</p>
+                                <p className="text-xs font-black text-rose-600">{absentCount}</p>
                             </div>
-                            <div className="border border-stone-200 rounded p-0.5 text-center bg-transparent">
-                                <p className="text-[7px] font-bold text-stone-500 uppercase leading-none mb-0.5 mt-0.5">Asistencia</p>
-                                <p className="text-xs font-black text-stone-700 leading-none mb-0.5">{percentage}%</p>
+                            <div className="flex items-center gap-1 border-l border-stone-200 pl-2 bg-stone-100/50 rounded-r-lg">
+                                <p className="text-[8px] font-bold text-stone-500 uppercase">%:</p>
+                                <p className={`text-xs font-black ${percentage >= 80 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                    {percentage}%
+                                </p>
                             </div>
                         </div>
                     </div>
 
-                    <div className="mb-2">
+                    <div className="mb-1">
                         <h4 className="text-[11px] font-bold text-stone-800 uppercase mb-1">Observaciones</h4>
-                        <div className="border-2 border-stone-200 rounded-xl p-2 bg-stone-50/50 h-16">
+                        <div className="border-2 border-stone-200 rounded-xl p-1 bg-stone-50/50 h-10">
                             {/* Espacio para escribir a mano */}
                         </div>
                     </div>
                     </div>
 
-                    <div className="grid grid-cols-3 gap-4 mt-8 pb-2">
+                    <div className="grid grid-cols-2 gap-8 mt-6 pb-0 px-8">
                         <div className="text-center">
-                            <div className="border-t-2 border-stone-400 pt-2 w-40 mx-auto">
-                                <p className="text-[10px] font-bold text-stone-600 uppercase">&nbsp;</p>
+                            <div className="border-t-2 border-stone-400 pt-1 w-48 mx-auto">
+                                <p className="text-[9px] font-bold text-stone-600 uppercase">Firma del Profesor</p>
                             </div>
                         </div>
                         <div className="text-center">
-                            <div className="border-t-2 border-stone-400 pt-2 w-40 mx-auto">
-                                <p className="text-[10px] font-bold text-stone-600 uppercase">Sello Institucional</p>
-                            </div>
-                        </div>
-                        <div className="text-center">
-                            <div className="border-t-2 border-stone-400 pt-2 w-40 mx-auto">
-                                <p className="text-[10px] font-bold text-stone-600 uppercase">Firma de Dirección</p>
+                            <div className="border-t-2 border-stone-400 pt-1 w-48 mx-auto">
+                                <p className="text-[9px] font-bold text-stone-600 uppercase">Firma de Dirección</p>
                             </div>
                         </div>
                     </div>
@@ -284,6 +461,7 @@ function App() {
                 const saved = localStorage.getItem('idear_user');
                 return saved ? JSON.parse(saved) : null;
             });
+            const isDirector = currentUser && (currentUser.dni === 'admin' || (currentUser.sede && currentUser.sede.includes("Leandro N. Alem")));
             const [globalSede, setGlobalSede] = useState(() => {
                 return localStorage.getItem('idear_sede') || null;
             });
@@ -310,6 +488,8 @@ function App() {
             const [configLevels, setConfigLevels] = useState([]);
             const [generalConfig, setGeneralConfig] = useState({ profesor: "" });
             const [sedes, setSedes] = useState([]);
+            const [announcements, setAnnouncements] = useState([]);
+            const [lastReadTime, setLastReadTime] = useState(() => Number(localStorage.getItem('idear_last_aviso') || 0));
 
             // UI feedback
             const [notifications, setNotifications] = useState([]);
@@ -329,6 +509,7 @@ function App() {
             const [attendanceMonthIdx, setAttendanceMonthIdx] = useState(new Date().getMonth());
 
             // Filtros y Estado de Calificaciones
+            const [tipoEvaluacion, setTipoEvaluacion] = useState("cursada");
             const [gradesNivel, setGradesNivel] = useState("Todos");
             const [gradeColumns, setGradeColumns] = useState({});
             const [grades, setGrades] = useState([]);
@@ -364,13 +545,90 @@ function App() {
             const [editingStudent, setEditingStudent] = useState(null);
             const [selectedStudentDetail, setSelectedStudentDetail] = useState(null);
             const [showBoletin, setShowBoletin] = useState(false);
+            const [boletinStudent, setBoletinStudent] = useState(null);
+            const [showHistorialModal, setShowHistorialModal] = useState(false);
+            const [historialStudent, setHistorialStudent] = useState(null);
+            const [showBoletinHistorial, setShowBoletinHistorial] = useState(false);
+            const [boletinHistorialStudent, setBoletinHistorialStudent] = useState(null);
+            const [showAnalitico, setShowAnalitico] = useState(false);
+            const [analiticoStudent, setAnaliticoStudent] = useState(null);
             const [activeReceipt, setActiveReceipt] = useState(null);
             const [modalLevel, setModalLevel] = useState("");
             const [modalCuota, setModalCuota] = useState("");
             const [modalInscripcion, setModalInscripcion] = useState("");
+            const [modalActive, setModalActive] = useState(true);
+            const [modalFechaBaja, setModalFechaBaja] = useState("");
 
             // Estado de conexión Firebase Realtime Database
             const [firebaseConnected, setFirebaseConnected] = useState(false);
+
+            // --- ACCIONES DE AVISOS INSTITUCIONALES ---
+            const handleAddAnnouncement = async () => {
+                let targetSede = globalSede;
+                if (isDirector) {
+                    const ans = confirm("¿Deseas publicar este aviso para TODAS las sedes (Global)?\n\n[Aceptar] = Global\n[Cancelar] = Solo para " + globalSede);
+                    if (ans) targetSede = "Global";
+                }
+
+                const msg = prompt("Escribe el texto del nuevo aviso:");
+                if (!msg || msg.trim() === "") return;
+
+                const newId = `aviso_${Date.now()}`;
+                const newAviso = {
+                    id: newId,
+                    text: msg.trim(),
+                    date: new Date().toISOString(),
+                    authorId: currentUser.id || currentUser.dni,
+                    authorName: currentUser.nombre,
+                    sede: targetSede
+                };
+
+                try {
+                    await set(ref(rtdb, `anuncios/${newId}`), newAviso);
+                    addNotification("Aviso publicado correctamente", "success");
+                } catch (error) {
+                    console.error("Error", error);
+                    addNotification("Error al publicar el aviso", "error");
+                }
+            };
+
+            const handleEditAnnouncement = async (aviso) => {
+                const newMsg = prompt("Edita el texto del aviso:", aviso.text);
+                if (newMsg === null || newMsg.trim() === "") return;
+
+                try {
+                    await set(ref(rtdb, `anuncios/${aviso.id}/text`), newMsg.trim());
+                    addNotification("Aviso actualizado", "success");
+                } catch (error) {
+                    addNotification("Error al editar aviso", "error");
+                }
+            };
+
+            const handleDeleteAnnouncement = async (avisoId) => {
+                if (!confirm("¿Seguro que deseas eliminar este aviso?")) return;
+                try {
+                    await set(ref(rtdb, `anuncios/${avisoId}`), null);
+                    addNotification("Aviso eliminado", "success");
+                } catch (error) {
+                    addNotification("Error al eliminar aviso", "error");
+                }
+            };
+
+            // Filtro de anuncios para el panel
+            const visibleAnnouncements = useMemo(() => {
+                return announcements
+                    .filter(a => isDirector || a.sede === "Global" || a.sede === globalSede)
+                    .sort((a, b) => new Date(b.date) - new Date(a.date));
+            }, [announcements, globalSede, isDirector]);
+
+            const unreadAnnouncementsCount = useMemo(() => {
+                return visibleAnnouncements.filter(a => new Date(a.date).getTime() > lastReadTime).length;
+            }, [visibleAnnouncements, lastReadTime]);
+
+            // Formatear moneda (Utilidad general)
+            const formatCurrency = (val) => {
+                return new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(val);
+            };
 
             // Recibo público (compartido por email)
             const [publicReceipt, setPublicReceipt] = useState(null);
@@ -393,6 +651,8 @@ function App() {
                     const currentLevelConfig = configLevels.find(c => c.curso_nivel === initialLevel);
                     setModalCuota(editingStudent?.cuotaOverride !== undefined ? editingStudent.cuotaOverride : (currentLevelConfig?.cuota || 40000));
                     setModalInscripcion(editingStudent?.inscripcionOverride !== undefined ? editingStudent.inscripcionOverride : (currentLevelConfig?.inscripcion || 20000));
+                    setModalActive(editingStudent ? editingStudent.active !== false : true);
+                    setModalFechaBaja(editingStudent?.fecha_baja || "");
                 }
             }, [showStudentModal, editingStudent, configLevels]);
 
@@ -483,6 +743,17 @@ function App() {
                 const alumnosRef = ref(rtdb, 'alumnos');
                 const pagosRef = ref(rtdb, 'pagos');
                 const asistenciasRef = ref(rtdb, 'asistencias');
+                const anunciosRef = ref(rtdb, 'anuncios');
+
+                // Listener de Anuncios
+                const unsubAnuncios = onValue(anunciosRef, (snapshot) => {
+                    const data = snapshot.val();
+                    if (data) {
+                        setAnnouncements(fbObjectToArray(data));
+                    } else {
+                        setAnnouncements([]);
+                    }
+                });
 
                 // Listener de Alumnos
                 const unsubAlumnos = onValue(alumnosRef, (snapshot) => {
@@ -493,24 +764,18 @@ function App() {
                         setStudents(lista.filter(s => s.sede === globalSede));
                         saveLocal('idear_students', lista);
                     } else {
-                        // Si Firebase está vacío, sembramos con los datos iniciales
-                        const seedObj = {};
-                        SEED_STUDENTS.forEach(s => { seedObj[s.id] = s; });
-                        set(alumnosRef, seedObj);
-                        setAllStudents(SEED_STUDENTS);
-                        setStudents(SEED_STUDENTS.filter(s => s.sede === globalSede));
+                        console.warn("No hay datos de alumnos en Firebase.");
+                        setAllStudents([]);
+                        setStudents([]);
                     }
                 }, (error) => {
                     console.error('Error leyendo alumnos:', error);
-                    // Fallback a localStorage
+                    // Fallback a localStorage solo si hay error de Firebase
                     const local = localStorage.getItem('idear_students');
                     if (local) {
                         const parsed = JSON.parse(local);
                         setAllStudents(parsed);
                         setStudents(parsed.filter(s => s.sede === globalSede));
-                    } else {
-                        setAllStudents(SEED_STUDENTS);
-                        setStudents(SEED_STUDENTS.filter(s => s.sede === globalSede));
                     }
                 });
 
@@ -519,18 +784,33 @@ function App() {
                     const data = snapshot.val();
                     if (data) {
                         const lista = fbObjectToArray(data);
+                        
+                        let needsMigration = false;
+                        const updates = {};
+                        lista.forEach(p => {
+                            if (p.period && !p.period.includes(' ') && p.period !== 'Matrícula' && p.period !== 'Examen') {
+                                const pYear = p.date ? new Date(p.date).getFullYear() : new Date().getFullYear();
+                                const newPeriod = `${p.period} ${pYear}`;
+                                updates[`pagos/${p.id}/period`] = newPeriod;
+                                needsMigration = true;
+                                p.period = newPeriod;
+                            }
+                        });
+                        
                         setPayments(lista);
                         saveLocal('idear_payments', lista);
+
+                        if (needsMigration) {
+                            update(ref(rtdb), updates).catch(e => console.error("Error en migración de pagos", e));
+                        }
                     } else {
-                        const seedObj = {};
-                        SEED_PAYMENTS.forEach(p => { seedObj[p.id] = p; });
-                        set(pagosRef, seedObj);
+                        console.warn("No hay datos de pagos en Firebase.");
+                        setPayments([]);
                     }
                 }, (error) => {
                     console.error('Error leyendo pagos:', error);
                     const local = localStorage.getItem('idear_payments');
                     if (local) setPayments(JSON.parse(local));
-                    else setPayments(SEED_PAYMENTS);
                 });
 
                 // Listener de Asistencias
@@ -541,16 +821,13 @@ function App() {
                         setAttendance(lista.filter(a => a.sede === globalSede));
                         saveLocal('idear_attendance', lista);
                     } else {
-                        const seedObj = {};
-                        SEED_ATTENDANCE.forEach(a => { seedObj[a.id] = a; });
-                        set(asistenciasRef, seedObj);
-                        setAttendance(SEED_ATTENDANCE.filter(a => a.sede === globalSede));
+                        console.warn("No hay datos de asistencia en Firebase.");
+                        setAttendance([]);
                     }
                 }, (error) => {
                     console.error('Error leyendo asistencias:', error);
                     const local = localStorage.getItem('idear_attendance');
                     if (local) setAttendance(JSON.parse(local).filter(a => a.sede === globalSede));
-                    else setAttendance(SEED_ATTENDANCE.filter(a => a.sede === globalSede));
                 });
 
                 // Listener de Configuración
@@ -601,7 +878,15 @@ function App() {
                         // Migration from old object format if needed, though they shouldn't have any important yet
                         setMesasColumns([]);
                     } else {
-                        setMesasColumns([]);
+                        // Inicializar por defecto solo si realmente no hay nada en Firebase
+                        const defaultCols = [
+                            { id: `col_${Date.now()}_1`, title: "Zapateo", date: new Date().toISOString().split('T')[0] },
+                            { id: `col_${Date.now()}_2`, title: "Zarandeo", date: new Date().toISOString().split('T')[0] },
+                            { id: `col_${Date.now()}_3`, title: "Expresión", date: new Date().toISOString().split('T')[0] },
+                            { id: `col_${Date.now()}_4`, title: "Teoría", date: new Date().toISOString().split('T')[0] },
+                            { id: `col_${Date.now()}_5`, title: "Danza", date: new Date().toISOString().split('T')[0] }
+                        ];
+                        set(ref(rtdb, `config/mesasColumns`), defaultCols).catch(console.error);
                     }
                 }, (error) => console.error("Error leyendo mesasColumns:", error));
 
@@ -706,6 +991,7 @@ function App() {
                     off(alumnosRef);
                     off(pagosRef);
                     off(asistenciasRef);
+                    off(anunciosRef);
                     off(configRef);
                     off(calificacionesRef);
                     off(gradeColsRef);
@@ -798,6 +1084,7 @@ function App() {
                             sede: "Leandro N. Alem"
                         };
                         await set(userRef, newUser);
+                        setCurrentTab('dashboard');
                         setCurrentUser(newUser);
                         setGlobalSede("Leandro N. Alem");
                         localStorage.setItem('idear_user', JSON.stringify(newUser));
@@ -817,6 +1104,7 @@ function App() {
                             const userSedes = userData.sede ? userData.sede.split(',').map(s => s.trim()) : [];
                             const hasAccess = userSedes.includes(tempSede) || userSedes.includes("Leandro N. Alem");
                             if (hasAccess) {
+                                setCurrentTab('dashboard');
                                 setCurrentUser(userData);
                                 setGlobalSede(tempSede);
                                 localStorage.setItem('idear_user', JSON.stringify(userData));
@@ -830,11 +1118,11 @@ function App() {
                                 addNotification(`Tu usuario está registrado para: "${userData.sede}". No tienes acceso a "${tempSede}".`, "error");
                             }
                         } else {
-                            addNotification("Contraseña incorrecta", "error");
+                            addNotification("Nombre o contraseña invalido", "error");
                         }
                     } else {
                         // Usuario no registrado — solo el admin puede crear cuentas
-                        addNotification("DNI no registrado. Comunicate con el administrador para crear tu cuenta de acceso.", "error");
+                        addNotification("Nombre o contraseña invalido", "error");
                     }
                 } catch (err) {
                     console.error("Error en autenticación:", err);
@@ -870,7 +1158,8 @@ function App() {
                     tutor: (formData.get("tutor") || "").trim(),
                     address: (formData.get("address") || "").trim(),
                     fecha_inicio: formData.get("fecha_inicio") || "",
-                    active: formData.get("active") === "on" ? true : false
+                    active: modalActive,
+                    fecha_baja: modalActive ? null : (modalFechaBaja || new Date().toISOString().split('T')[0])
                 };
 
                 const cuotaOverride = formData.get("cuotaOverride");
@@ -894,15 +1183,65 @@ function App() {
 
                 let updatedStudents = [...students];
                 if (editingStudent) {
-                    updatedStudents = updatedStudents.map(s => s.id === editingStudent.id ? studentData : s);
-                    addNotification("Alumno actualizado");
-                } else {
-                    if (students.some(s => s.dni === studentData.dni)) {
-                        addNotification("Ya existe un alumno con este DNI", "error");
-                        return;
+                    // Detectar si se está reactivando un alumno inactivo (reinscripción)
+                    const wasInactive = editingStudent.active === false;
+                    const isNowActive = studentData.active === true;
+                    if (wasInactive && isNowActive) {
+                        // Reinscripción: conservar historial, guardar período inactivo
+                        studentData.fecha_inicio = editingStudent.fecha_inicio; // Mantener la original
+                        studentData.historial_bajas = editingStudent.historial_bajas ? [...editingStudent.historial_bajas] : [];
+                        if (editingStudent.fecha_baja) {
+                            studentData.historial_bajas.push({
+                                baja: editingStudent.fecha_baja,
+                                alta: formData.get("fecha_inicio") || new Date().toISOString().split('T')[0]
+                            });
+                        }
+                        addNotification("¡Alumno reinscripto! Se conserva el historial de deuda anterior.");
+                    } else {
+                        addNotification("Alumno actualizado");
                     }
-                    updatedStudents.push(studentData);
-                    addNotification("Alumno registrado con éxito");
+                    updatedStudents = updatedStudents.map(s => s.id === editingStudent.id ? studentData : s);
+                } else {
+                    // Verificar si ya existe un alumno con este DNI
+                    const existingStudent = allStudents.find(s => s.dni === studentData.dni);
+                    if (existingStudent) {
+                        if (existingStudent.active) {
+                            // Ya está activo → error de duplicado
+                            addNotification("Ya existe un alumno activo con este DNI", "error");
+                            return;
+                        } else {
+                            // Está dado de baja → reactivo conservando historial
+                            const reactivatedStudent = {
+                                ...existingStudent,
+                                name: studentData.name,
+                                level: studentData.level,
+                                sede: studentData.sede,
+                                phone: studentData.phone,
+                                email: studentData.email,
+                                tutor: studentData.tutor,
+                                address: studentData.address,
+                                fecha_inicio: existingStudent.fecha_inicio,
+                                active: true,
+                                fecha_baja: null,
+                                historial_bajas: [
+                                    ...(existingStudent.historial_bajas || []),
+                                    ...(existingStudent.fecha_baja ? [{
+                                        baja: existingStudent.fecha_baja,
+                                        alta: studentData.fecha_inicio || new Date().toISOString().split('T')[0]
+                                    }] : [])
+                                ],
+                                ...(studentData.cuotaOverride !== undefined && { cuotaOverride: studentData.cuotaOverride }),
+                                ...(studentData.inscripcionOverride !== undefined && { inscripcionOverride: studentData.inscripcionOverride }),
+                            };
+                            updatedStudents = updatedStudents.map(s => s.id === existingStudent.id ? reactivatedStudent : s);
+                            studentData.id = existingStudent.id; // Usar el mismo ID para guardar en Firebase
+                            Object.assign(studentData, reactivatedStudent);
+                            addNotification(`¡${studentData.name} reinscripto! Historial de pagos conservado.`);
+                        }
+                    } else {
+                        updatedStudents.push(studentData);
+                        addNotification("Alumno registrado con éxito");
+                    }
                 }
 
                 setStudents(updatedStudents);
@@ -1001,7 +1340,7 @@ function App() {
                 return students.filter(s => 
                     s.sede === globalSede && 
                     s.active &&
-                    (gradesNivel === "Todos" || s.level === gradesNivel)
+                    (gradesNivel === "Todos" || s.level === gradesNivel || s.taller === gradesNivel || s.promocionadoDe === gradesNivel)
                 );
             }, [students, globalSede, gradesNivel]);
 
@@ -1010,6 +1349,10 @@ function App() {
             }, [gradeColumns, gradesNivel]);
 
             const handleAddGradeColumn = async () => {
+                if (gradesNivel === "Todos") {
+                    alert("Por favor, selecciona un Nivel/Curso específico antes de agregar una evaluación.");
+                    return;
+                }
                 const title = prompt("Nombre de la nueva evaluación (Ej: Examen 1, Trabajo Práctico, etc):");
                 if (!title) return;
                 
@@ -1045,7 +1388,7 @@ function App() {
                         }
                     }
                 } else if (newTitle !== currentTitle) {
-                    const idx = currentCols.findIndex(c => c.id === colId);
+                    const idx = currentCols.findIndex(c => c.id !== colId);
                     if (idx !== -1) {
                         currentCols[idx].title = newTitle;
                         try {
@@ -1093,32 +1436,18 @@ function App() {
                 return allStudents.filter(s => {
                     if (!s.active) return false;
                     if (mesasSede !== "Todas" && s.sede !== mesasSede) return false;
-                    if (mesasNivel !== "Todos" && s.level !== mesasNivel) return false;
+                    
+                    if (mesasNivel !== "Todos") {
+                        return s.level === mesasNivel || s.promocionadoDe === mesasNivel;
+                    }
                     
                     const lvl = s.level || "";
-                    const validPrefixes = ["1ro", "2do", "3er", "Diploma"];
-                    const isValidLevel = validPrefixes.some(prefix => lvl.startsWith(prefix));
-                    
-                    return isValidLevel;
+                    const validPrefixes = ["1er", "1ro", "2do", "3er", "Diploma", "Profesorado"];
+                    return validPrefixes.some(prefix => lvl.startsWith(prefix));
                 });
             }, [allStudents, mesasSede, mesasNivel]);
 
             const currentMesasColumns = mesasColumns || [];
-
-            useEffect(() => {
-                if (!firebaseConnected) return;
-                
-                if (!mesasColumns || mesasColumns.length === 0) {
-                    const defaultCols = [
-                        { id: `col_${Date.now()}_1`, title: "Zapateo", date: new Date().toISOString().split('T')[0] },
-                        { id: `col_${Date.now()}_2`, title: "Zarandeo", date: new Date().toISOString().split('T')[0] },
-                        { id: `col_${Date.now()}_3`, title: "Expresión", date: new Date().toISOString().split('T')[0] },
-                        { id: `col_${Date.now()}_4`, title: "Teoría", date: new Date().toISOString().split('T')[0] },
-                        { id: `col_${Date.now()}_5`, title: "Danza", date: new Date().toISOString().split('T')[0] }
-                    ];
-                    set(ref(rtdb, `config/mesasColumns`), defaultCols).catch(console.error);
-                }
-            }, [mesasColumns, firebaseConnected]);
 
             const handleAddMesasColumn = async () => {
                 const title = prompt("Nombre de la nueva evaluación de mesa (Ej: Práctica):");
@@ -1152,7 +1481,7 @@ function App() {
                         }
                     }
                 } else if (newTitle !== currentTitle) {
-                    const idx = currentCols.findIndex(c => c.id === colId);
+                    const idx = currentCols.findIndex(c => c.id !== colId);
                     if (idx !== -1) {
                         currentCols[idx].title = newTitle;
                         try {
@@ -1164,8 +1493,8 @@ function App() {
                 }
             };
 
-            const handleUpdateMesasGrade = async (studentId, columnId, valueStr) => {
-                const recordId = `${columnId}_${studentId}`;
+            const handleUpdateMesasGrade = async (studentId, columnId, valueStr, currentSafeLevel) => {
+                const recordId = currentSafeLevel ? `${columnId}_${studentId}_${currentSafeLevel}` : `${columnId}_${studentId}`;
                 
                 if (valueStr.trim() === "") {
                     try {
@@ -1195,8 +1524,8 @@ function App() {
                 }
             };
 
-            const handleToggleMesasStudent = async (studentId, currentStatus) => {
-                const recordId = `status_${studentId}`;
+            const handleToggleMesasStudent = async (studentId, currentStatus, currentSafeLevel) => {
+                const recordId = currentSafeLevel ? `status_${studentId}_${currentSafeLevel}` : `status_${studentId}`;
                 if (currentStatus) {
                     try {
                         await set(ref(rtdb, `mesasExamen/${recordId}`), null);
@@ -1213,6 +1542,89 @@ function App() {
                         });
                     } catch(err) {
                         console.error(err);
+                    }
+                }
+            };
+
+            const handleUpdateHistorialGrade = async (studentId, columnId, valueStr, level, isCurrent = false) => {
+                const safeLevel = (level || "").replace(/[.#$\[\]\/]/g, "_");
+                const recordId = isCurrent ? `${columnId}_${studentId}` : `${columnId}_${studentId}_${safeLevel}`;
+                console.log("Saving historial grade:", { recordId, studentId, columnId, valueStr, level });
+                if (valueStr.trim() === "") {
+                    try { await set(ref(rtdb, `mesasExamen/${recordId}`), null); } catch(e) { console.error(e); }
+                    return;
+                }
+                const score = parseFloat(valueStr.replace(',', '.'));
+                if (isNaN(score)) return;
+                try {
+                    await set(ref(rtdb, `mesasExamen/${recordId}`), {
+                        id: recordId, studentId, columnId, level, score, sede: globalSede
+                    });
+                    console.log("Saved successfully:", recordId);
+                } catch(e) { 
+                    console.error("Firebase write error:", e);
+                    alert("Error Firebase: " + e.message);
+                }
+            };
+
+            const handleToggleHistorialStudent = async (studentId, currentStatus, level) => {
+                const safeLevel = (level || "").replace(/[.#$\[\]\/]/g, "_");
+                const recordId = `status_${studentId}_${safeLevel}`;
+                if (currentStatus) {
+                    try { await set(ref(rtdb, `mesasExamen/${recordId}`), null); } catch(e) { console.error(e); }
+                } else {
+                    try {
+                        await set(ref(rtdb, `mesasExamen/${recordId}`), { id: recordId, studentId, level, isAbsent: true });
+                    } catch(e) { console.error(e); }
+                }
+            };
+
+            const handlePromoteStudent = async (student) => {
+                const currentLevel = student.level || student.taller || "Desconocido";
+                
+                // Validate that the student has at least one grade for the current level
+                const safeLevel = currentLevel.replace(/[.#$\[\]\/]/g, "_");
+                const hasGrades = mesasGrades.some(g => {
+                    if (g.studentId !== student.id || g.score === undefined) return false;
+                    const isCurrentLevel = g.id.endsWith(`_${safeLevel}`);
+                    const isFallback = g.id === `${g.columnId}_${student.id}`;
+                    return isCurrentLevel || isFallback;
+                });
+                
+                if (!hasGrades) {
+                    alert("No se puede promocionar a un alumno sin calificaciones cargadas.");
+                    return;
+                }
+
+                const currentIdx = NIVELES.indexOf(currentLevel);
+                if (currentIdx !== -1 && currentIdx < NIVELES.length - 1) {
+                    const nextLevel = NIVELES[currentIdx + 1];
+                    if (window.confirm(`¿Estás seguro que deseas promover a ${student.name} de "${currentLevel}" a "${nextLevel}"?`)) {
+                        try {
+                            const studentRef = ref(rtdb, `alumnos/${student.id}`);
+                            const updatedData = { ...student, level: nextLevel, taller: nextLevel, promocionadoDe: currentLevel, updatedAt: Date.now() };
+                            await set(studentRef, updatedData);
+                            addNotification(`Alumno promovido a ${nextLevel}`, "success");
+                        } catch (err) {
+                            console.error(err);
+                            addNotification("Error al promover al alumno", "error");
+                        }
+                    }
+                } else {
+                    alert("El alumno ya se encuentra en el último nivel o su nivel no permite promoción automática.");
+                }
+            };
+
+            const handleUndoPromoteStudent = async (student) => {
+                if (window.confirm(`¿Estás seguro que deseas deshacer la promoción de ${student.name} y devolverlo a "${student.promocionadoDe}"?`)) {
+                    try {
+                        const studentRef = ref(rtdb, `alumnos/${student.id}`);
+                        const updatedData = { ...student, level: student.promocionadoDe, taller: student.promocionadoDe, promocionadoDe: null, updatedAt: Date.now() };
+                        await set(studentRef, updatedData);
+                        addNotification(`Promoción deshecha con éxito`, "success");
+                    } catch (err) {
+                        console.error(err);
+                        addNotification("Error al deshacer la promoción", "error");
                     }
                 }
             };
@@ -1283,65 +1695,84 @@ function App() {
             }, [configLevels, attendanceNivel]);
 
             // Sincronizar input de texto del selector con el ID de alumno seleccionado
-            // y calcular automáticamente el siguiente período, concepto y número de recibo.
+            const paymentMissingPeriods = useMemo(() => {
+                if (!newPayment.studentId) return PERIODOS;
+                const student = students.find(s => s.id === newPayment.studentId);
+                if (!student) return PERIODOS;
+
+                const currentYear = new Date().getFullYear();
+                const currentMonthIdx = new Date().getMonth();
+                
+                let startYear = currentYear;
+                let startMonthIdx = 2;
+                if (student.fecha_inicio) {
+                    const parts = student.fecha_inicio.split('-');
+                    if (parts.length >= 2) {
+                        startYear = parseInt(parts[0], 10);
+                        startMonthIdx = Math.max(2, parseInt(parts[1], 10) - 1);
+                    }
+                }
+
+                const sPayments = payments.filter(p => p.studentId === student.id && p.period !== 'Examen');
+                let remainingPaid = sPayments.reduce((sum, p) => sum + p.amount, 0);
+                
+                const missing = [];
+                for (let year = startYear; year <= currentYear; year++) {
+                    const monthStart = (year === startYear) ? startMonthIdx : 2;
+                    let monthEnd = (year < currentYear) ? 11 : currentMonthIdx;
+                    
+                    if (!student.active && student.fecha_baja) {
+                        const bajaP = student.fecha_baja.split('-');
+                        if (bajaP.length >= 2) {
+                            const bYear = parseInt(bajaP[0], 10);
+                            const bMonth = parseInt(bajaP[1], 10) - 1;
+                            if (bYear < year) break;
+                            if (bYear === year) monthEnd = Math.min(monthEnd, bMonth);
+                        }
+                    }
+
+                    for (let i = monthStart; i <= monthEnd; i++) {
+                        if (isMonthInactive(year, i, student.historial_bajas)) continue;
+                        
+                        const mName = `${MONTHS_ORDER[i]} ${year}`;
+                        
+                        let levelConfig = configLevels.find(c => c.curso_nivel === student.level)
+                                          || configLevels.find(c => c.curso_nivel === student.taller);
+                        const hist = getHistoricalValues(levelConfig, i, year);
+                        const mInsc = student.inscripcionOverride !== undefined && student.inscripcionOverride !== "" ? Number(student.inscripcionOverride) : hist.inscripcion;
+                        const mCuota = student.cuotaOverride !== undefined && student.cuotaOverride !== "" ? Number(student.cuotaOverride) : hist.cuota;
+                        
+                        const isEnrollment = (year === startYear && i === monthStart);
+                        const expectedCost = isEnrollment ? (mInsc + mCuota) : mCuota;
+
+                        if (remainingPaid >= expectedCost) {
+                            remainingPaid -= expectedCost;
+                        } else {
+                            missing.push(mName);
+                        }
+                    }
+                }
+                
+                return missing.length > 0 ? [...missing, "Matrícula", "Examen"] : ["Matrícula", "Examen", ...PERIODOS];
+            }, [newPayment.studentId, students, payments, configLevels]);
+
+            // Efecto para auto-completar nombre, y calcular automáticamente el siguiente período, concepto y número de recibo.
             useEffect(() => {
                 if (newPayment.studentId) {
                     const studentObj = students.find(s => s.id === newPayment.studentId);
                     if (studentObj) {
                         setStudentSelectSearch(studentObj.name);
                         
-                        // 1. Calcular el siguiente mes de pago por simulación cronológica acumulada
-                        const MONTHS_ORDER = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
-                        const studentPayments = payments.filter(p => p.studentId === newPayment.studentId && p.period !== "Examen");
-                        
-                        const levelConfig = configLevels.find(c => c.curso_nivel === studentObj.level) 
-                                            || configLevels.find(c => c.curso_nivel === studentObj.taller);
-                        const valorInscripcion = studentObj.inscripcionOverride !== undefined && studentObj.inscripcionOverride !== "" 
-                                                 ? Number(studentObj.inscripcionOverride) 
-                                                 : (levelConfig?.inscripcion || 20000);
-                        const valorCuota = studentObj.cuotaOverride !== undefined && studentObj.cuotaOverride !== "" 
-                                           ? Number(studentObj.cuotaOverride) 
-                                           : (levelConfig?.cuota || 25000);
-                        
-                        let startMonthIdx = 2; // Marzo por defecto
-                        if (studentObj.fecha_inicio) {
-                            const startMonthStr = studentObj.fecha_inicio.split('-')[1];
-                            if (startMonthStr) {
-                                startMonthIdx = parseInt(startMonthStr, 10) - 1;
-                                startMonthIdx = Math.max(2, Math.min(11, startMonthIdx));
-                            }
-                        }
-
-                        const totalPaid = studentPayments.reduce((sum, p) => sum + p.amount, 0);
-                        let remainingPaid = totalPaid;
-                        let nextPeriod = "Marzo";
-                        let foundUnpaid = false;
-
-                        const currentYear = new Date().getFullYear();
-                        for (let i = startMonthIdx; i < MONTHS_ORDER.length; i++) {
-                            const isEnrollmentMonth = (i === startMonthIdx);
-                            const hist = getHistoricalValues(levelConfig, i, currentYear);
-                            const mInsc = studentObj.inscripcionOverride !== undefined && studentObj.inscripcionOverride !== "" ? Number(studentObj.inscripcionOverride) : hist.inscripcion;
-                            const mCuota = studentObj.cuotaOverride !== undefined && studentObj.cuotaOverride !== "" ? Number(studentObj.cuotaOverride) : hist.cuota;
-                            
-                            const expectedForThisMonth = isEnrollmentMonth ? (mInsc + mCuota) : mCuota;
-
-                            if (remainingPaid >= expectedForThisMonth) {
-                                remainingPaid -= expectedForThisMonth;
-                            } else {
-                                nextPeriod = MONTHS_ORDER[i];
-                                foundUnpaid = true;
-                                break;
-                            }
-                        }
-
-                        if (!foundUnpaid) {
-                            nextPeriod = "Diciembre";
-                        }
+                        const nextPeriod = paymentMissingPeriods[0] || "Matrícula";
 
                         // Verificar si el próximo período coincide con el mes de inscripción del alumno
-                        const isEnrollmentMonthNext = (MONTHS_ORDER.indexOf(nextPeriod) === startMonthIdx);
-                        const suggestedConcept = isEnrollmentMonthNext 
+                        // Verificar si el próximo período coincide con el primer mes que debe (suele ser inscripción)
+                        const isEnrollmentMonthNext = (nextPeriod === paymentMissingPeriods[0] && paymentMissingPeriods[0]?.includes(MONTHS_ORDER[2]));
+                        const suggestedConcept = nextPeriod === "Matrícula"
+                            ? `Inscripción`
+                            : nextPeriod === "Examen"
+                            ? `Derecho de Examen`
+                            : isEnrollmentMonthNext 
                             ? `Inscripción y Cuota de ${nextPeriod}` 
                             : `Cuota de ${nextPeriod}`;
 
@@ -1364,13 +1795,14 @@ function App() {
                         receiptNo: ""
                     }));
                 }
-            }, [newPayment.studentId, students, payments, globalSede, activePayments.length, configLevels, sedes]);
+            }, [newPayment.studentId, students, paymentMissingPeriods, globalSede, activePayments.length, sedes]);
 
             // Limpiar selección de alumno al cambiar de sede
             useEffect(() => {
                 setNewPayment(prev => ({ ...prev, studentId: "" }));
                 setStudentSelectSearch("");
             }, [globalSede]);
+
 
             const handleRegisterPayment = async (e) => {
                 e.preventDefault();
@@ -1389,8 +1821,12 @@ function App() {
                 const levelConfig = configLevels.find(c => c.curso_nivel === selectedStudent.level) 
                                     || configLevels.find(c => c.curso_nivel === selectedStudent.taller);
                 const currentYear = new Date(newPayment.date).getFullYear();
-                const paymentMonthIdx = Math.max(0, MONTHS_ORDER.indexOf(newPayment.period));
-                const histValues = getHistoricalValues(levelConfig, paymentMonthIdx, currentYear);
+                const periodParts = newPayment.period.split(' ');
+                const periodMonth = periodParts[0];
+                const periodYear = periodParts.length > 1 ? parseInt(periodParts[1], 10) : currentYear;
+
+                const paymentMonthIdx = Math.max(0, MONTHS_ORDER.indexOf(periodMonth));
+                const histValues = getHistoricalValues(levelConfig, paymentMonthIdx, periodYear);
                 
                 const valorInscripcion = selectedStudent.inscripcionOverride !== undefined && selectedStudent.inscripcionOverride !== "" 
                                          ? Number(selectedStudent.inscripcionOverride) 
@@ -1399,12 +1835,16 @@ function App() {
                                    ? Number(selectedStudent.cuotaOverride) 
                                    : histValues.cuota;
 
+                let startYear = currentYear;
                 const startMonthStr = selectedStudent.fecha_inicio?.split('-')[1];
+                const startYearStr = selectedStudent.fecha_inicio?.split('-')[0];
+                if (startYearStr) startYear = parseInt(startYearStr, 10);
+                
                 let startMonthIdx = startMonthStr ? parseInt(startMonthStr, 10) - 1 : -1;
                 if (startMonthIdx !== -1) {
                     startMonthIdx = Math.max(2, startMonthIdx);
                 }
-                const isEnrollmentMonth = startMonthIdx !== -1 && MONTHS_ORDER[startMonthIdx] === newPayment.period;
+                const isEnrollmentMonth = startMonthIdx !== -1 && MONTHS_ORDER[startMonthIdx] === periodMonth && startYear === periodYear;
 
                 // Pagos del alumno en el período actual (excluyendo exámenes)
                 const studentPaymentsForPeriod = payments.filter(p => p.studentId === selectedStudent.id && p.period === newPayment.period && p.period !== "Examen");
@@ -1437,64 +1877,12 @@ function App() {
 
                 const periodBalance = Math.max(0, totalExpectedForPeriod - (alreadyPaidForPeriod + amountPaid));
 
-                // Calcular deuda anterior acumulada (meses anteriores al período actual, desde la fecha de inicio del alumno)
-                let previousDebt = 0;
-                if (newPayment.period !== "Matrícula" && newPayment.period !== "Examen" && startMonthIdx !== -1) {
-                    const targetMonthIdx = MONTHS_ORDER.indexOf(newPayment.period);
-                    if (targetMonthIdx > startMonthIdx) {
-                        for (let i = startMonthIdx; i < targetMonthIdx; i++) {
-                            const prevMonthName = MONTHS_ORDER[i];
-                            const isPrevEnrollmentMonth = (i === startMonthIdx);
-                            const prevHist = getHistoricalValues(levelConfig, i, currentYear);
-                            const prevInsc = selectedStudent.inscripcionOverride !== undefined && selectedStudent.inscripcionOverride !== "" ? Number(selectedStudent.inscripcionOverride) : prevHist.inscripcion;
-                            const prevCuota = selectedStudent.cuotaOverride !== undefined && selectedStudent.cuotaOverride !== "" ? Number(selectedStudent.cuotaOverride) : prevHist.cuota;
-                            const expectedForPrevMonth = isPrevEnrollmentMonth ? (prevInsc + prevCuota) : prevCuota;
-                            const paidForPrevMonth = payments
-                                .filter(p => p.studentId === selectedStudent.id && p.period === prevMonthName && p.period !== "Examen")
-                                .reduce((sum, p) => sum + p.amount, 0);
-                            previousDebt += Math.max(0, expectedForPrevMonth - paidForPrevMonth);
-                        }
-                        
-                        // --- FIX: Recalcular la deuda acumulada usando la cascada cronológica correcta ---
-                        const studentPaymentsForDebt = payments.filter(p => p.studentId === selectedStudent.id && p.period !== "Examen");
-                        let remainingPaidForDebt = studentPaymentsForDebt.reduce((sum, p) => sum + p.amount, 0);
-                        let truePreviousDebt = 0;
-                        for (let i = startMonthIdx; i < targetMonthIdx; i++) {
-                            const isPrevEnrollmentMonth = (i === startMonthIdx);
-                            const prevHist = getHistoricalValues(levelConfig, i, currentYear);
-                            const prevInsc = selectedStudent.inscripcionOverride !== undefined && selectedStudent.inscripcionOverride !== "" ? Number(selectedStudent.inscripcionOverride) : prevHist.inscripcion;
-                            const prevCuota = selectedStudent.cuotaOverride !== undefined && selectedStudent.cuotaOverride !== "" ? Number(selectedStudent.cuotaOverride) : prevHist.cuota;
-                            const expectedForPrevMonth = isPrevEnrollmentMonth ? (prevInsc + prevCuota) : prevCuota;
-                            
-                            if (remainingPaidForDebt >= expectedForPrevMonth) {
-                                remainingPaidForDebt -= expectedForPrevMonth;
-                            } else {
-                                truePreviousDebt += (expectedForPrevMonth - remainingPaidForDebt);
-                                remainingPaidForDebt = 0;
-                            }
-                        }
-                        previousDebt = truePreviousDebt;
-                        // ----------------------------------------------------------------------------------
-                    }
-                }
+                // Calcular saldo total a la fecha usando el calculador central studentDebts
+                const currentStudentDebtBefore = studentDebts[selectedStudent.id] || 0;
+                const balanceToDate = Math.max(0, currentStudentDebtBefore - amountPaid);
 
-                // Calcular saldo total a la fecha (mes en curso del pago)
-                const currentMonthIdx = new Date(newPayment.date).getMonth();
-                let totalExpectedUpToDate = 0;
-                if (startMonthIdx !== -1) {
-                    for (let m = startMonthIdx; m <= Math.max(startMonthIdx, currentMonthIdx); m++) {
-                        const mHist = getHistoricalValues(levelConfig, m, currentYear);
-                        const mInsc = selectedStudent.inscripcionOverride !== undefined && selectedStudent.inscripcionOverride !== "" ? Number(selectedStudent.inscripcionOverride) : mHist.inscripcion;
-                        const mCuota = selectedStudent.cuotaOverride !== undefined && selectedStudent.cuotaOverride !== "" ? Number(selectedStudent.cuotaOverride) : mHist.cuota;
-                        totalExpectedUpToDate += (m === startMonthIdx) ? (mInsc + mCuota) : mCuota;
-                    }
-                } else {
-                    totalExpectedUpToDate = valorInscripcion + valorCuota;
-                }
-                const totalPaidIncludingThis = payments
-                    .filter(p => p.studentId === selectedStudent.id && p.period !== "Examen")
-                    .reduce((sum, p) => sum + p.amount, 0) + amountPaid;
-                const balanceToDate = Math.max(0, totalExpectedUpToDate - totalPaidIncludingThis);
+                // Calcular deuda anterior acumulada simplemente restando el balance del periodo al balance total
+                const previousDebt = Math.max(0, balanceToDate - periodBalance);
 
                 const paymentRecord = {
                     id: paymentId,
@@ -1550,54 +1938,107 @@ function App() {
                 addNotification("Pago eliminado", "info");
             };
 
+            // --- Helper para saber si un alumno está activo (solo basado en el campo active) ---
+            const currentYear = new Date().getFullYear();
+            const getIsStudentActive = (s) => {
+                return !!s.active;
+            };
+
+            // --- Helper para saber si un alumno tiene cuotas vigentes en el año actual ---
+            const isStudentCurrentYear = (s) => {
+                if (!s.active) return false;
+                if (s.fecha_inicio) {
+                    const parts = s.fecha_inicio.split('-');
+                    if (parts.length >= 1) {
+                        const year = parseInt(parts[0], 10);
+                        if (year < currentYear) return false;
+                    }
+                }
+                return true;
+            };
+
             // --- FILTROS DE ALUMNOS COMPUTADOS ---
             const filteredStudents = useMemo(() => {
                 return students.filter(s => {
                     const matchesSearch = s.name.toLowerCase().includes(studentSearch.toLowerCase()) || s.dni.includes(studentSearch);
                     
                     const matchesNivel = studentNivelFilter === "Todos" || s.level === studentNivelFilter;
-                    const matchesStatus = alumnoStatusTab === "todos" ? true : (alumnoStatusTab === "activos" ? s.active : !s.active);
+                    const isActive = getIsStudentActive(s);
+                    const matchesStatus = alumnoStatusTab === "todos" ? true : (alumnoStatusTab === "activos" ? isActive : !isActive);
                     return matchesSearch && matchesNivel && matchesStatus;
                 }).sort((a, b) => {
-                    if (a.active !== b.active) return a.active ? -1 : 1;
+                    const aActive = getIsStudentActive(a);
+                    const bActive = getIsStudentActive(b);
+                    if (aActive !== bActive) return aActive ? -1 : 1;
                     if (a.level !== b.level) return (a.level || '').localeCompare(b.level || '');
                     return (a.name || '').localeCompare(b.name || '');
                 });
             }, [students, studentSearch, globalSede, studentNivelFilter, alumnoStatusTab]);
 
-            // --- CÁLCULO DE DEUDA POR ALUMNO ---
+            // --- CÁLCULO DE DEUDA POR ALUMNO (period-matching) ---
             const studentDebts = useMemo(() => {
                 const debts = {};
-                const currentMonthIdx = new Date().getMonth(); // 0=Jan, 1=Feb, 2=Mar, 3=Apr, 4=May, 5=Jun
-                
+                const currentMonthIdx = new Date().getMonth();
+                const currentYear = new Date().getFullYear();
+                const MONTHS = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
+
                 students.forEach(student => {
-                    let startMonthIdx = 2; // Default a Marzo (idx=2)
+                    let startMonthIdx = 2; // Marzo por defecto
+                    let startYear = currentYear;
+
                     if (student.fecha_inicio) {
-                        const startMonthStr = student.fecha_inicio.split('-')[1];
-                        if (startMonthStr) {
-                            startMonthIdx = parseInt(startMonthStr, 10) - 1;
-                            startMonthIdx = Math.max(2, startMonthIdx); // No cobrar anterior a marzo
+                        const parts = student.fecha_inicio.split('-');
+                        if (parts.length >= 2) {
+                            startYear = parseInt(parts[0], 10);
+                            startMonthIdx = Math.max(2, parseInt(parts[1], 10) - 1);
                         }
                     }
 
-                    let monthsToPay = 0;
-                    if (currentMonthIdx >= startMonthIdx) {
-                        monthsToPay = currentMonthIdx - startMonthIdx + 1;
-                    } else {
-                        monthsToPay = 1; // Mínimo se le cobra el mes de inicio
-                    }
-
-                    let levelConfig = configLevels.find(c => c.curso_nivel === student.level) 
-                                      || configLevels.find(c => c.curso_nivel === student.taller);
-                    
-                    const inscripcion = student.inscripcionOverride !== undefined && student.inscripcionOverride !== "" ? Number(student.inscripcionOverride) : (levelConfig?.inscripcion || 20000);
-                    const cuota = student.cuotaOverride !== undefined && student.cuotaOverride !== "" ? Number(student.cuotaOverride) : (levelConfig?.cuota || 25000);
-                    
-                    const totalExpected = inscripcion + (cuota * monthsToPay);
-                    
                     const studentPayments = payments.filter(p => p.studentId === student.id && p.period !== 'Examen');
                     const totalPaid = studentPayments.reduce((sum, p) => sum + p.amount, 0);
-                    
+
+                    let totalExpected = 0;
+
+                    for (let year = startYear; year <= currentYear; year++) {
+                        const monthStart = (year === startYear) ? startMonthIdx : 2;
+                        let monthEnd;
+
+                        if (year < currentYear) {
+                            monthEnd = 11;
+                            if (!student.active && student.fecha_baja) {
+                                const bajaP = student.fecha_baja.split('-');
+                                if (bajaP.length >= 2 && parseInt(bajaP[0], 10) === year) {
+                                    monthEnd = Math.min(11, parseInt(bajaP[1], 10) - 1);
+                                }
+                            }
+                        } else {
+                            monthEnd = currentMonthIdx;
+                            if (!student.active && student.fecha_baja) {
+                                const bajaP = student.fecha_baja.split('-');
+                                if (bajaP.length >= 2 && parseInt(bajaP[0], 10) === year) {
+                                    monthEnd = Math.min(currentMonthIdx, parseInt(bajaP[1], 10) - 1);
+                                }
+                            }
+                        }
+
+                        if (!student.active && student.fecha_baja) {
+                            const bajaP = student.fecha_baja.split('-');
+                            if (bajaP.length >= 2 && parseInt(bajaP[0], 10) < year) break;
+                        }
+
+                        for (let i = monthStart; i <= monthEnd; i++) {
+                            if (isMonthInactive(year, i, student.historial_bajas)) continue;
+                            
+                            let levelConfig = configLevels.find(c => c.curso_nivel === student.level)
+                                              || configLevels.find(c => c.curso_nivel === student.taller);
+                            const hist = getHistoricalValues(levelConfig, i, year);
+                            const mInsc = student.inscripcionOverride !== undefined && student.inscripcionOverride !== "" ? Number(student.inscripcionOverride) : hist.inscripcion;
+                            const mCuota = student.cuotaOverride !== undefined && student.cuotaOverride !== "" ? Number(student.cuotaOverride) : hist.cuota;
+                            
+                            totalExpected += (year === startYear && i === monthStart) ? (mInsc + mCuota) : mCuota;
+                        }
+                    }
+
                     debts[student.id] = Math.max(0, totalExpected - totalPaid);
                 });
                 return debts;
@@ -1625,7 +2066,7 @@ function App() {
 
             // --- ESTADÍSTICAS DEL DASHBOARD ---
             const stats = useMemo(() => {
-                const totalAlumnos = students.filter(s => s.active).length;
+                const totalAlumnos = students.filter(s => getIsStudentActive(s)).length;
                 
                 // Recaudación mensual actual (supongamos mes actual en curso, ej: Junio 2026 en base a fecha sistema)
                 const currentMonthString = "Mayo"; // Basado en el registro mayoritario de la planilla
@@ -1640,7 +2081,7 @@ function App() {
 
                 // Alumnos con deuda (no tienen pago registrado para el mes actual, por ejemplo "Mayo")
                 const paidThisMonthStudentIds = new Set(activePayments.filter(p => p.period === "Mayo").map(p => p.studentId));
-                let deudores = students.filter(s => s.active && !paidThisMonthStudentIds.has(s.id));
+                let deudores = students.filter(s => getIsStudentActive(s) && !paidThisMonthStudentIds.has(s.id));
 
                 // Ordenar por mayor deuda calculada previamente en studentDebts
                 deudores.sort((a, b) => (studentDebts[b.id] || 0) - (studentDebts[a.id] || 0));
@@ -1678,53 +2119,116 @@ function App() {
                 
                 const attendanceRate = totalClasses > 0 ? Math.round((presents / totalClasses) * 100) : 100;
 
-                // Obtener los períodos pagados, imputando el mes de la fecha del recibo si es un pago de Matricula combinada
                 const MONTHS_ORDER = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
                 const levelConfig = configLevels.find(c => c.curso_nivel === selectedStudentDetail.level) 
                                     || configLevels.find(c => c.curso_nivel === selectedStudentDetail.taller);
                 const valorInscripcion = selectedStudentDetail.inscripcionOverride !== undefined && selectedStudentDetail.inscripcionOverride !== "" ? Number(selectedStudentDetail.inscripcionOverride) : (levelConfig?.inscripcion || 20000);
                 const valorCuota = selectedStudentDetail.cuotaOverride !== undefined && selectedStudentDetail.cuotaOverride !== "" ? Number(selectedStudentDetail.cuotaOverride) : (levelConfig?.cuota || 25000);
-                const sumaTotal = valorInscripcion + valorCuota;
 
-                const paidPeriods = [];
-                const sPaymentsForMonthly = sPayments.filter(p => p.period !== "Examen");
-                let remainingPaid = sPaymentsForMonthly.reduce((sum, p) => sum + p.amount, 0);
-
+                // --- Determinar año de inicio y mes de inicio ---
+                let startYear = new Date().getFullYear();
                 let startMonthIdx = 2; // Marzo por defecto
                 if (selectedStudentDetail.fecha_inicio) {
-                    const startMonthStr = selectedStudentDetail.fecha_inicio.split('-')[1];
-                    if (startMonthStr) {
-                        startMonthIdx = parseInt(startMonthStr, 10) - 1;
+                    const parts = selectedStudentDetail.fecha_inicio.split('-');
+                    if (parts.length >= 2) {
+                        startYear = parseInt(parts[0], 10);
+                        startMonthIdx = parseInt(parts[1], 10) - 1;
                         startMonthIdx = Math.max(2, Math.min(11, startMonthIdx));
                     }
                 }
 
                 const currentYear = new Date().getFullYear();
-                for (let i = startMonthIdx; i < MONTHS_ORDER.length; i++) {
-                    const isEnrollmentMonth = (i === startMonthIdx);
-                    const hist = getHistoricalValues(levelConfig, i, currentYear);
-                    const mInsc = selectedStudentDetail.inscripcionOverride !== undefined && selectedStudentDetail.inscripcionOverride !== "" ? Number(selectedStudentDetail.inscripcionOverride) : hist.inscripcion;
-                    const mCuota = selectedStudentDetail.cuotaOverride !== undefined && selectedStudentDetail.cuotaOverride !== "" ? Number(selectedStudentDetail.cuotaOverride) : hist.cuota;
-                    
-                    const expectedForThisMonth = isEnrollmentMonth ? (mInsc + mCuota) : mCuota;
-                    
-                    if (remainingPaid >= expectedForThisMonth) {
-                        paidPeriods.push(MONTHS_ORDER[i]);
-                        remainingPaid -= expectedForThisMonth;
-                    } else {
-                        break;
-                    }
-                }
                 const currentMonthIdx = new Date().getMonth();
-                const expectedPeriods = [];
-                const endMonth = Math.max(startMonthIdx, currentMonthIdx);
-                for (let i = startMonthIdx; i <= endMonth; i++) {
-                    if (MONTHS_ORDER[i]) {
-                        expectedPeriods.push(MONTHS_ORDER[i]);
+
+                // --- Determinar mes de baja si es inactivo ---
+                let bajaYear = null;
+                let bajaMonthIdx = null;
+                if (!selectedStudentDetail.active && selectedStudentDetail.fecha_baja) {
+                    const partsBaja = selectedStudentDetail.fecha_baja.split('-');
+                    if (partsBaja.length >= 2) {
+                        bajaYear = parseInt(partsBaja[0], 10);
+                        bajaMonthIdx = parseInt(partsBaja[1], 10) - 1;
                     }
                 }
 
-                const missingPeriods = expectedPeriods.filter(p => !paidPeriods.includes(p));
+                // --- Calcular deuda por año usando imputación cronológica ---
+                const sPaymentsForMonthly = sPayments.filter(p => p.period !== "Examen");
+                let remainingTotalPaid = sPaymentsForMonthly.reduce((sum, p) => sum + p.amount, 0);
+
+                const yearlyBreakdown = [];
+                const allPaidPeriods = [];
+                const allExpectedPeriods = [];
+
+                for (let year = startYear; year <= currentYear; year++) {
+                    const monthStart = (year === startYear) ? startMonthIdx : 2;
+                    let monthEnd;
+
+                    if (year < currentYear) {
+                        monthEnd = 11; // Hasta diciembre
+                        if (bajaYear === year && bajaMonthIdx !== null) {
+                            monthEnd = Math.min(11, bajaMonthIdx);
+                        }
+                    } else {
+                        monthEnd = currentMonthIdx;
+                        if (bajaYear === year && bajaMonthIdx !== null) {
+                            monthEnd = Math.min(currentMonthIdx, bajaMonthIdx);
+                        }
+                    }
+
+                    if (bajaYear !== null && bajaYear < year && !selectedStudentDetail.active) break;
+
+                    const yearMonths = [];
+                    const yearPaidMonths = [];
+                    const yearMissingMonths = [];
+                    let yearExpectedCost = 0;
+                    let yearAllocatedPaid = 0;
+
+                    for (let i = monthStart; i <= monthEnd; i++) {
+                        if (isMonthInactive(year, i, selectedStudentDetail.historial_bajas)) continue;
+
+                        const monthName = `${MONTHS_ORDER[i]} ${year}`;
+                        yearMonths.push(monthName);
+                        allExpectedPeriods.push(monthName);
+
+                        const hist = getHistoricalValues(levelConfig, i, year);
+                        const mInsc = selectedStudentDetail.inscripcionOverride !== undefined && selectedStudentDetail.inscripcionOverride !== "" ? Number(selectedStudentDetail.inscripcionOverride) : hist.inscripcion;
+                        const mCuota = selectedStudentDetail.cuotaOverride !== undefined && selectedStudentDetail.cuotaOverride !== "" ? Number(selectedStudentDetail.cuotaOverride) : hist.cuota;
+                        
+                        const isEnrollment = (year === startYear && i === monthStart);
+                        const expectedCost = isEnrollment ? (mInsc + mCuota) : mCuota;
+                        yearExpectedCost += expectedCost;
+
+                        if (remainingTotalPaid >= expectedCost) {
+                            yearAllocatedPaid += expectedCost;
+                            remainingTotalPaid -= expectedCost;
+                            yearPaidMonths.push(monthName);
+                            allPaidPeriods.push(monthName);
+                        } else {
+                            if (remainingTotalPaid > 0) {
+                                // Pago parcial de la cuota
+                                yearAllocatedPaid += remainingTotalPaid;
+                                remainingTotalPaid = 0;
+                            }
+                            yearMissingMonths.push(monthName);
+                        }
+                    }
+
+                    if (yearMonths.length > 0) {
+                        yearlyBreakdown.push({
+                            year,
+                            months: yearMonths,
+                            paidMonths: yearPaidMonths,
+                            missingMonths: yearMissingMonths,
+                            totalExpected: yearExpectedCost,
+                            totalPaid: yearAllocatedPaid,
+                            debt: Math.max(0, yearExpectedCost - yearAllocatedPaid),
+                            monthCount: yearMonths.length,
+                            includesInscripcion: (year === startYear)
+                        });
+                    }
+                }
+
+                const missingPeriods = allExpectedPeriods.filter(p => !allPaidPeriods.includes(p));
 
                 return {
                     payments: sPayments,
@@ -1734,10 +2238,11 @@ function App() {
                     absents,
                     attendanceRate,
                     missingPeriods,
-                    paidPeriods,
+                    paidPeriods: allPaidPeriods,
                     valorCuota,
                     valorInscripcion,
-                    expectedPeriods
+                    expectedPeriods: allExpectedPeriods,
+                    yearlyBreakdown
                 };
             }, [selectedStudentDetail, activePayments, attendance, configLevels]);
 
@@ -2045,6 +2550,18 @@ function App() {
                 if (tempSede) {
                     return (
                         <div className="min-h-screen bg-gradient-to-br from-black via-orange-600 to-yellow-500 flex flex-col items-center justify-center p-4 animate-fadeIn">
+                            {/* Notificaciones flotantes */}
+                            <div className="fixed top-4 right-4 z-50 flex flex-col gap-2 no-print">
+                                {notifications.map(n => (
+                                    <div key={n.id} className={`p-4 rounded-xl shadow-lg border text-sm flex items-center gap-3 transition-all transform transtone-y-0 duration-300 ${
+                                        n.type === 'success' ? 'bg-orange-50 border-orange-200 text-orange-800' :
+                                        n.type === 'error' ? 'bg-rose-50 border-rose-200 text-rose-800' : 'bg-blue-50 border-blue-200 text-blue-800'
+                                    }`}>
+                                        <i className={`fas ${n.type === 'success' ? 'fa-check-circle' : n.type === 'error' ? 'fa-exclamation-circle' : 'fa-info-circle'}`}></i>
+                                        <span>{n.text}</span>
+                                    </div>
+                                ))}
+                            </div>
                             <div className="w-48 h-auto mb-8">
                                 <img src="/logo.png" alt="Logo IDeAr" className="w-full h-auto object-contain drop-shadow-lg" />
                             </div>
@@ -2162,6 +2679,18 @@ function App() {
 
                 return (
                     <div className="min-h-screen bg-gradient-to-br from-black via-orange-600 to-yellow-500 flex flex-col items-center justify-center p-4 animate-fadeIn">
+                        {/* Notificaciones flotantes */}
+                        <div className="fixed top-4 right-4 z-50 flex flex-col gap-2 no-print">
+                            {notifications.map(n => (
+                                <div key={n.id} className={`p-4 rounded-xl shadow-lg border text-sm flex items-center gap-3 transition-all transform transtone-y-0 duration-300 ${
+                                    n.type === 'success' ? 'bg-orange-50 border-orange-200 text-orange-800' :
+                                    n.type === 'error' ? 'bg-rose-50 border-rose-200 text-rose-800' : 'bg-blue-50 border-blue-200 text-blue-800'
+                                }`}>
+                                    <i className={`fas ${n.type === 'success' ? 'fa-check-circle' : n.type === 'error' ? 'fa-exclamation-circle' : 'fa-info-circle'}`}></i>
+                                    <span>{n.text}</span>
+                                </div>
+                            ))}
+                        </div>
                         <div className="w-48 h-auto mb-10">
                             <img src="/logo.png" alt="Logo IDeAr" className="w-full h-auto object-contain drop-shadow-lg" />
                         </div>
@@ -2280,7 +2809,6 @@ function App() {
                     <nav className="hidden sm:block bg-white border-b border-stone-200 shadow-sm sticky top-0 z-40 no-print">
                         <div className="max-w-7xl mx-auto px-4 overflow-x-auto flex space-x-1 sm:space-x-4">
                             {(() => {
-                                const isDirector = currentUser && (currentUser.dni === 'admin' || (currentUser.sede && currentUser.sede.includes("Leandro N. Alem")));
                                 const tabs = [
                                     { id: "dashboard",   icon: "fa-chart-pie",            label: "Panel" },
                                     { id: "asistencias", icon: "fa-calendar-check",       label: "Asistencia" },
@@ -2289,9 +2817,6 @@ function App() {
                                     { id: "alumnos",     icon: "fa-user-graduate",         label: "Alumnos" },
                                     { id: "perfil",      icon: "fa-user-circle",           label: "Mi Perfil" },
                                 ];
-                                if (isDirector) {
-                                    tabs.splice(3, 0, { id: "mesas", icon: "fa-gavel", label: "Mesas" });
-                                }
                                 return tabs.map(t => (
                                     <button
                                         key={t.id}
@@ -2310,7 +2835,6 @@ function App() {
                     {/* ── Navegación Mobile: barra fija abajo ── */}
                     <nav className="sm:hidden fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-stone-200 shadow-[0_-4px_20px_rgba(0,0,0,0.08)] no-print safe-area-bottom">
                         {(() => {
-                            const isDirector = currentUser && (currentUser.dni === 'admin' || (currentUser.sede && currentUser.sede.includes("Leandro N. Alem")));
                             const tabs = [
                                 { id: "dashboard",   icon: "fa-chart-pie",           label: "Panel" },
                                 { id: "asistencias", icon: "fa-calendar-check",      label: "Asistencia" },
@@ -2319,11 +2843,8 @@ function App() {
                                 { id: "alumnos",     icon: "fa-users",                label: "Alumnos" },
                                 { id: "perfil",      icon: "fa-user-circle",          label: "Perfil" },
                             ];
-                            if (isDirector) {
-                                tabs.splice(3, 0, { id: "mesas", icon: "fa-gavel", label: "Mesas" });
-                            }
                             return (
-                                <div className={`grid ${isDirector ? 'grid-cols-7' : 'grid-cols-6'} h-16`}>
+                                <div className="grid grid-cols-6 h-16">
                                     {tabs.map(t => (
                                         <button
                                             key={t.id}
@@ -2359,10 +2880,18 @@ function App() {
                                         }}
                                     ></div>
                                     <div className="space-y-2 text-center md:text-left relative z-10">
-                                        <h2 className="text-3xl font-extrabold drop-shadow-md">¡Hola, Administrador!</h2>
+                                        <h2 className="text-3xl font-extrabold drop-shadow-md">
+                                            ¡Hola, {isDirector ? "Administrador" : currentUser?.nombre?.split(' ')[0] || "Profesor"}!
+                                        </h2>
                                         <p className="text-orange-100 max-w-md drop-shadow">Bienvenido al centro integral de operaciones del Instituto IDeAr. Aquí tienes un vistazo de hoy.</p>
                                     </div>
                                     <div className="flex items-center gap-6 relative z-10">
+                                        {unreadAnnouncementsCount > 0 && (
+                                            <div className="bg-white text-orange-600 px-4 py-3 rounded-2xl text-sm font-bold flex items-center gap-2 shadow-lg animate-bounce mr-4">
+                                                <i className="fas fa-bell"></i>
+                                                ¡Tienes {unreadAnnouncementsCount} {unreadAnnouncementsCount === 1 ? 'mensaje nuevo' : 'mensajes nuevos'}!
+                                            </div>
+                                        )}
                                         <div className="bg-white/10 p-4 rounded-2xl text-center backdrop-blur-sm min-w-[100px] border border-white/10">
                                             <p className="text-xs text-orange-200 font-medium">Alumnos Activos</p>
                                             <p className="text-3xl font-bold">{stats.totalAlumnos}</p>
@@ -2412,8 +2941,75 @@ function App() {
 
                                 </div>
 
-                                {/* Alertador de deudores */}
-                                <div className="grid grid-cols-1 gap-8 max-w-3xl">
+                                {/* Avisos Institucionales y Alertador */}
+                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                                    
+                                    {/* Cartelera de Avisos */}
+                                    <div className="bg-white p-6 rounded-3xl shadow-sm border border-stone-100 flex flex-col">
+                                        <div className="flex items-center justify-between mb-6">
+                                            <h3 className="text-lg font-bold text-stone-800 flex items-center gap-2">
+                                                <i className="fas fa-bullhorn text-amber-500"></i> Avisos y Novedades
+                                            </h3>
+                                            <div className="flex items-center gap-3">
+                                                {unreadAnnouncementsCount > 0 && (
+                                                    <button 
+                                                        onClick={() => {
+                                                            const now = Date.now();
+                                                            localStorage.setItem('idear_last_aviso', now.toString());
+                                                            setLastReadTime(now);
+                                                        }}
+                                                        className="text-[10px] text-stone-500 hover:text-stone-700 underline flex items-center gap-1 cursor-pointer"
+                                                    >
+                                                        <i className="fas fa-check-double"></i> Marcar {unreadAnnouncementsCount === 1 ? 'leído' : 'leídos'}
+                                                    </button>
+                                                )}
+                                                <button 
+                                                    onClick={handleAddAnnouncement}
+                                                    className="bg-amber-100 text-amber-700 hover:bg-amber-200 px-3 py-1.5 rounded-full text-xs font-bold transition-colors flex items-center gap-1"
+                                                >
+                                                    <i className="fas fa-plus"></i> Nuevo
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        <div className="flex-1 overflow-y-auto pr-1 space-y-4 max-h-[400px]">
+                                            {visibleAnnouncements.length === 0 ? (
+                                                <div className="text-center py-8 text-stone-400">
+                                                    <i className="far fa-comments text-3xl mb-2 opacity-50"></i>
+                                                    <p className="text-sm font-medium">No hay avisos recientes</p>
+                                                </div>
+                                            ) : (
+                                                visibleAnnouncements.map(aviso => (
+                                                    <div key={aviso.id} className="bg-stone-50 p-4 rounded-2xl border border-stone-100 group relative">
+                                                        <div className="flex items-start justify-between mb-2">
+                                                            <div>
+                                                                <span className="text-[10px] font-bold text-stone-400 uppercase">{new Date(aviso.date).toLocaleDateString('es-AR')}</span>
+                                                                <span className={`ml-2 text-[10px] font-bold px-2 py-0.5 rounded-full ${aviso.sede === 'Global' ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'}`}>
+                                                                    {aviso.sede}
+                                                                </span>
+                                                            </div>
+                                                            {(isDirector || aviso.authorId === (currentUser?.id || currentUser?.dni)) && (
+                                                                <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                                    <button onClick={() => handleEditAnnouncement(aviso)} className="w-6 h-6 rounded-md bg-white border border-stone-200 text-stone-400 hover:text-blue-500 flex items-center justify-center shadow-sm">
+                                                                        <i className="fas fa-pencil-alt text-[10px]"></i>
+                                                                    </button>
+                                                                    <button onClick={() => handleDeleteAnnouncement(aviso.id)} className="w-6 h-6 rounded-md bg-white border border-stone-200 text-stone-400 hover:text-rose-500 flex items-center justify-center shadow-sm">
+                                                                        <i className="fas fa-trash text-[10px]"></i>
+                                                                    </button>
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                        <p className="text-sm text-stone-700 font-medium whitespace-pre-wrap">{aviso.text}</p>
+                                                        <div className="mt-2 text-[10px] text-stone-400 font-semibold text-right">
+                                                            Por: {aviso.authorName}
+                                                        </div>
+                                                    </div>
+                                                ))
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    {/* Alerta de Cuotas */}
                                     <div className="bg-white p-6 rounded-3xl shadow-sm border border-stone-100">
                                         <div className="flex items-center justify-between mb-4">
                                             <h3 className="text-lg font-bold text-stone-800 flex items-center gap-2">
@@ -2542,8 +3138,8 @@ function App() {
                                                                 </div>
                                                             </th>
                                                         ))}
-                                                        <th className="px-3 py-3 text-center border-l-2 border-stone-200 bg-emerald-50 text-emerald-700 sticky right-12 z-10">Presentes</th>
-                                                        <th className="px-3 py-3 text-center bg-rose-50 text-rose-700 sticky right-0 z-10">Ausentes</th>
+                                                        <th className="px-3 py-3 text-center border-l-2 border-stone-200 bg-emerald-50 text-emerald-700 sticky right-12 z-10" title="Presentes">Pres.</th>
+                                                        <th className="px-3 py-3 text-center bg-rose-50 text-rose-700 sticky right-0 z-10" title="Ausentes">Aus.</th>
                                                     </tr>
                                                 </thead>
                                                 <tbody className="divide-y divide-stone-100">
@@ -2598,10 +3194,38 @@ function App() {
                         {/* 2.5 SECCIÓN CALIFICACIONES */}
                         {currentTab === "calificaciones" && (
                             <div className="space-y-6 animate-fadeIn">
-                                <div className="bg-white p-6 rounded-3xl shadow-sm border border-stone-100">
+                                {isDirector && (
+                                    <div className="bg-white p-4 rounded-2xl shadow-sm border border-stone-100 flex justify-center no-print">
+                                        <div className="flex bg-stone-100 p-1 rounded-xl gap-1">
+                                            <button
+                                                onClick={() => setTipoEvaluacion('cursada')}
+                                                className={`px-6 py-2 rounded-lg text-sm font-bold transition-all ${
+                                                    tipoEvaluacion === 'cursada' 
+                                                    ? 'bg-white text-amber-600 shadow-sm' 
+                                                    : 'text-stone-500 hover:text-stone-700'
+                                                }`}
+                                            >
+                                                <i className="fas fa-star mr-2"></i> En Curso
+                                            </button>
+                                            <button
+                                                onClick={() => setTipoEvaluacion('mesas')}
+                                                className={`px-6 py-2 rounded-lg text-sm font-bold transition-all ${
+                                                    tipoEvaluacion === 'mesas' 
+                                                    ? 'bg-white text-amber-600 shadow-sm' 
+                                                    : 'text-stone-500 hover:text-stone-700'
+                                                }`}
+                                            >
+                                                <i className="fas fa-gavel mr-2"></i> Mesas de Examen
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {tipoEvaluacion === "cursada" && (
+                                <div className="bg-white p-6 rounded-3xl shadow-sm border border-stone-100 animate-fadeIn">
                                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
                                         <h3 className="text-xl font-bold text-stone-800 flex items-center gap-2">
-                                            <i className="fas fa-star text-amber-500"></i> Calificaciones
+                                            <i className="fas fa-star text-amber-500"></i> Calificaciones (En Curso)
                                         </h3>
                                     </div>
 
@@ -2726,12 +3350,10 @@ function App() {
                                         </div>
                                     )}
                                 </div>
-                            </div>
-                        )}
-                        {/* 2.75 SECCIÓN MESAS DE EXAMEN */}
-                        {currentTab === "mesas" && (
-                            <div className="space-y-6 animate-fadeIn">
-                                <div className="bg-white p-6 rounded-3xl shadow-sm border border-stone-100">
+                                )}
+
+                                {tipoEvaluacion === "mesas" && isDirector && (
+                                <div className="bg-white p-6 rounded-3xl shadow-sm border border-stone-100 animate-fadeIn">
                                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
                                         <h3 className="text-xl font-bold text-stone-800 flex items-center gap-2">
                                             <i className="fas fa-gavel text-amber-500"></i> Mesas de Examen
@@ -2781,32 +3403,33 @@ function App() {
                                             <table className="w-full text-sm text-left whitespace-nowrap">
                                                 <thead className="text-xs text-stone-500 bg-stone-50 border-b border-stone-100 uppercase font-bold">
                                                     <tr>
-                                                        <th className="px-4 py-3 sticky left-0 bg-stone-50 z-20 border-r border-stone-100 shadow-[2px_0_5px_rgba(0,0,0,0.02)] min-w-[200px]">Estudiante</th>
+                                                        <th className="px-2 py-2 sticky left-0 bg-stone-50 z-20 border-r border-stone-100 shadow-[2px_0_5px_rgba(0,0,0,0.02)] min-w-[180px]">Estudiante</th>
                                                         {currentMesasColumns.map((col, idx) => (
-                                                            <th key={col.id} className="px-4 py-3 text-center border-r border-stone-100 min-w-[100px] group/col">
+                                                            <th key={col.id} className="px-2 py-2 text-center border-r border-stone-100 min-w-[80px] group/col">
                                                                 <div className="flex flex-col items-center relative">
-                                                                    <span className="text-[10px] text-stone-400 mb-1">Nota {idx + 1}</span>
-                                                                    <span className="text-xs text-stone-700">{col.title}</span>
+                                                                    <span className="text-[10px] text-stone-400 mb-0.5">N°{idx + 1}</span>
+                                                                    <span className="text-[10px] text-stone-700 font-bold">{col.title}</span>
                                                                     <button 
                                                                         onClick={() => handleEditMesasColumn(col.id, col.title)}
-                                                                        className="absolute -top-1 -right-2 w-5 h-5 bg-stone-100 hover:bg-amber-100 text-stone-400 hover:text-amber-600 rounded flex items-center justify-center opacity-0 group-hover/col:opacity-100 transition-all cursor-pointer shadow-sm border border-stone-200"
+                                                                        className="absolute -top-1 -right-2 w-4 h-4 bg-stone-100 hover:bg-amber-100 text-stone-400 hover:text-amber-600 rounded flex items-center justify-center opacity-0 group-hover/col:opacity-100 transition-all cursor-pointer shadow-sm border border-stone-200"
                                                                         title="Editar o eliminar columna"
                                                                     >
-                                                                        <i className="fas fa-pencil-alt text-[10px]"></i>
+                                                                        <i className="fas fa-pencil-alt text-[8px]"></i>
                                                                     </button>
                                                                 </div>
                                                             </th>
                                                         ))}
-                                                        <th className="px-4 py-3 border-r border-stone-100 text-center min-w-[60px]">
+                                                        <th className="px-2 py-2 border-r border-stone-100 text-center w-10">
                                                             <button 
                                                                 onClick={handleAddMesasColumn}
-                                                                className="w-8 h-8 rounded-full bg-blue-500 hover:bg-blue-600 text-white flex items-center justify-center transition-colors mx-auto shadow-sm"
+                                                                className="w-6 h-6 rounded-full bg-blue-500 hover:bg-blue-600 text-white flex items-center justify-center transition-colors mx-auto shadow-sm"
                                                                 title="Añadir Evaluación"
                                                             >
-                                                                <i className="fas fa-plus"></i>
+                                                                <i className="fas fa-plus text-[9px]"></i>
                                                             </button>
                                                         </th>
-                                                        <th className="px-4 py-3 text-center border-l-2 border-stone-200 bg-stone-100 text-stone-800 sticky right-0 z-10 shadow-[-2px_0_5px_rgba(0,0,0,0.02)]">Nota Final</th>
+                                                        <th className="px-2 py-2 text-center border-l-2 border-stone-200 bg-stone-100 text-stone-800 min-w-[60px]">Prom.</th>
+                                                <th className="px-2 py-2 text-center bg-stone-50 min-w-[130px]">Acciones</th>
                                                     </tr>
                                                 </thead>
                                                 <tbody className="divide-y divide-stone-100">
@@ -2814,15 +3437,21 @@ function App() {
                                                         let totalScore = 0;
                                                         let countScore = 0;
                                                         
-                                                        const statusRecord = mesasGrades.find(g => g.id === `status_${student.id}`);
+                                                        const currentViewLevel = mesasNivel !== "Todos" ? mesasNivel : (student.level || student.taller || "Desconocido");
+                                                        const safeLevel = currentViewLevel.replace(/[.#$\[\]\/]/g, "_");
+                                                        
+                                                        const shouldAllowFallback = !student.promocionadoDe || currentViewLevel === student.promocionadoDe;
+                                                        
+                                                        let statusRecord = mesasGrades.find(g => g.id === `status_${student.id}_${safeLevel}`);
+                                                        if (!statusRecord && shouldAllowFallback) statusRecord = mesasGrades.find(g => g.id === `status_${student.id}`);
                                                         const isAbsent = statusRecord ? statusRecord.isAbsent : false;
                                                         
                                                         return (
-                                                            <tr key={student.id} className={`hover:bg-amber-50/30 transition-colors group ${isAbsent ? 'opacity-50 grayscale' : ''}`}>
-                                                                <td className="px-4 py-3 font-semibold text-stone-700 sticky left-0 bg-white group-hover:bg-amber-50/80 z-10 border-r border-stone-100 shadow-[2px_0_5px_rgba(0,0,0,0.02)]">
-                                                                    <div className="flex items-center gap-3">
+                                                            <tr key={student.id} className={`hover:bg-amber-50/30 transition-colors group ${isAbsent ? 'opacity-50 grayscale' : ''} ${student.promocionadoDe ? 'bg-emerald-50' : ''}`}>
+                                                                <td className={`px-2 py-2 font-semibold text-stone-700 sticky left-0 group-hover:bg-amber-50/80 z-10 border-r border-stone-100 shadow-[2px_0_5px_rgba(0,0,0,0.02)] ${student.promocionadoDe ? 'bg-emerald-50' : 'bg-white'}`}>
+                                                                    <div className="flex items-center gap-2">
                                                                         <button
-                                                                            onClick={() => handleToggleMesasStudent(student.id, isAbsent)}
+                                                                            onClick={() => handleToggleMesasStudent(student.id, isAbsent, safeLevel)}
                                                                             className={`w-5 h-5 rounded flex-shrink-0 flex items-center justify-center transition-colors shadow-sm ${
                                                                                 isAbsent 
                                                                                     ? 'bg-rose-100 text-rose-600 border border-rose-200 hover:bg-rose-200' 
@@ -2833,19 +3462,26 @@ function App() {
                                                                             <i className={`fas ${isAbsent ? 'fa-times' : 'fa-check'} text-[10px]`}></i>
                                                                         </button>
                                                                         <div>
-                                                                            <div className="text-sm uppercase">{student.name}</div>
-                                                                            <div className="flex items-center gap-2 mt-0.5">
-                                                                                <span className="text-[10px] text-stone-400 font-normal">DNI {student.dni || '-'}</span>
-                                                                                <span className="text-[9px] bg-stone-100 text-stone-500 px-1.5 py-0.5 rounded font-bold">{student.sede}</span>
+                                                                            <div className="text-xs font-bold uppercase flex items-center gap-1">
+                                                                                {student.name}
+                                                                                {student.promocionadoDe && (
+                                                                                    <span className="text-[9px] text-emerald-600 font-bold bg-emerald-100 px-1 py-0.5 rounded normal-case shadow-sm border border-emerald-200">
+                                                                                        Promovido a {student.level}
+                                                                                    </span>
+                                                                                )}
+                                                                            </div>
+                                                                            <div className="flex items-center gap-1 mt-0.5">
+                                                                                <span className="text-[9px] text-stone-400">DNI {student.dni || '-'}</span>
                                                                                 {student.level && (
-                                                                                    <span className="text-[9px] bg-amber-50 text-amber-600 border border-amber-100 px-1.5 py-0.5 rounded font-bold">{student.level}</span>
+                                                                                    <span className="text-[8px] bg-amber-50 text-amber-600 border border-amber-100 px-1 py-0.5 rounded font-bold">{student.level}</span>
                                                                                 )}
                                                                             </div>
                                                                         </div>
                                                                     </div>
                                                                 </td>
                                                                 {currentMesasColumns.map(col => {
-                                                                    const grade = mesasGrades.find(g => g.studentId === student.id && g.columnId === col.id);
+                                                                    let grade = mesasGrades.find(g => g.id === `${col.id}_${student.id}_${safeLevel}`);
+                                                                    if (!grade && shouldAllowFallback) grade = mesasGrades.find(g => g.id === `${col.id}_${student.id}`);
                                                                     const scoreVal = grade ? grade.score : "";
                                                                     if (grade && grade.score && !isAbsent) {
                                                                         totalScore += grade.score;
@@ -2861,14 +3497,15 @@ function App() {
                                                                     }
 
                                                                     return (
-                                                                        <td key={col.id} className="px-4 py-3 border-r border-stone-100 text-center">
+                                                                        <td key={col.id} className="px-2 py-2 border-r border-stone-100 text-center">
                                                                             <input
-                                                                                type="text"
+                                                                                type="number"
+                                                                                inputMode="decimal"
                                                                                 defaultValue={scoreVal}
                                                                                 disabled={isAbsent}
                                                                                 onBlur={(e) => {
                                                                                     if (e.target.value !== String(scoreVal)) {
-                                                                                        handleUpdateMesasGrade(student.id, col.id, e.target.value);
+                                                                                        handleUpdateMesasGrade(student.id, col.id, e.target.value, safeLevel);
                                                                                     }
                                                                                 }}
                                                                                 onKeyDown={(e) => {
@@ -2876,16 +3513,71 @@ function App() {
                                                                                         e.target.blur();
                                                                                     }
                                                                                 }}
-                                                                                className={`w-16 h-8 text-center font-bold text-sm rounded-full border outline-none focus:ring-2 focus:ring-amber-500/30 transition-colors mx-auto block ${colorClass}`}
+                                                                                className={`w-12 h-7 text-center font-bold text-xs rounded-lg border outline-none focus:ring-2 focus:ring-amber-500/30 transition-colors mx-auto block ${colorClass}`}
                                                                                 placeholder="-"
                                                                             />
                                                                         </td>
                                                                     );
                                                                 })}
-                                                                <td className="px-4 py-3 border-r border-stone-100 bg-stone-50/30 text-center"></td>
-                                                                
-                                                                <td className="px-4 py-3 text-center font-bold text-stone-800 border-l-2 border-stone-200 bg-stone-50 sticky right-0 z-10 shadow-[-2px_0_5px_rgba(0,0,0,0.02)]">
-                                                                    {countScore > 0 ? (totalScore / countScore).toFixed(2) : '-'}
+                                                                <td className="px-2 py-2 border-r border-stone-100 bg-stone-50/20"></td>
+                                                                <td className="px-2 py-2 text-center font-black text-stone-900 border-l-2 border-stone-200 bg-stone-50">
+                                                                    {countScore > 0 ? (
+                                                                        <span className={`inline-flex items-center justify-center w-11 h-7 rounded-lg text-xs font-black border-2 ${
+                                                                            (totalScore/countScore) >= 7 ? 'bg-emerald-50 text-emerald-800 border-emerald-300' :
+                                                                            (totalScore/countScore) >= 4 ? 'bg-amber-50 text-amber-800 border-amber-300' :
+                                                                            'bg-rose-50 text-rose-800 border-rose-300'
+                                                                        }`}>{(totalScore / countScore).toFixed(1)}</span>
+                                                                    ) : '-'}
+                                                                </td>
+                                                                <td className="px-2 py-2 text-center bg-white">
+                                                                    <div className="flex items-center justify-center gap-1">
+                                                                        {student.promocionadoDe ? (
+                                                                            <>
+                                                                                <div className="bg-emerald-600 text-white font-bold py-1 px-2 rounded-lg text-[9px] shadow-sm flex items-center gap-1 whitespace-nowrap cursor-default" title="Alumno promovido">
+                                                                                    <i className="fas fa-check-circle"></i>
+                                                                                    <span>Promocionado</span>
+                                                                                </div>
+                                                                                <button
+                                                                                    onClick={() => handleUndoPromoteStudent(student)}
+                                                                                    className="bg-rose-100 hover:bg-rose-200 text-rose-600 border border-rose-200 font-bold py-1 px-2 rounded-lg text-[9px] transition-all shadow-sm flex items-center justify-center whitespace-nowrap"
+                                                                                    title="Deshacer Promoción"
+                                                                                >
+                                                                                    <i className="fas fa-undo"></i>
+                                                                                </button>
+                                                                            </>
+                                                                        ) : (
+                                                                            <button
+                                                                                onClick={() => handlePromoteStudent(student)}
+                                                                                className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-1 px-2 rounded-lg text-[9px] transition-all shadow-sm flex items-center gap-1 whitespace-nowrap"
+                                                                                title="Promocionar de Nivel"
+                                                                            >
+                                                                                <i className="fas fa-level-up-alt"></i>
+                                                                                <span>Promocionar</span>
+                                                                            </button>
+                                                                        )}
+                                                                        <button
+                                                                            onClick={() => {
+                                                                                setHistorialStudent(student);
+                                                                                setShowHistorialModal(true);
+                                                                            }}
+                                                                            className="bg-amber-100 hover:bg-amber-200 text-amber-700 font-bold py-1 px-2 rounded-lg text-[9px] transition-all shadow-sm flex items-center gap-1 whitespace-nowrap"
+                                                                            title="Historial de Años Previos"
+                                                                        >
+                                                                            <i className="fas fa-history"></i>
+                                                                            <span>Historial</span>
+                                                                        </button>
+                                                                        <button
+                                                                            onClick={() => {
+                                                                                setBoletinStudent(student);
+                                                                                setShowBoletin(true);
+                                                                            }}
+                                                                            className="bg-stone-700 hover:bg-stone-900 text-white font-bold py-1 px-2 rounded-lg text-[9px] transition-all shadow-sm flex items-center gap-1 whitespace-nowrap"
+                                                                            title="Generar Boletín"
+                                                                        >
+                                                                            <i className="fas fa-file-invoice"></i>
+                                                                            <span>Boletín</span>
+                                                                        </button>
+                                                                    </div>
                                                                 </td>
                                                             </tr>
                                                         );
@@ -2895,6 +3587,7 @@ function App() {
                                         </div>
                                     )}
                                 </div>
+                                )}
                             </div>
                         )}
 
@@ -2947,14 +3640,18 @@ function App() {
                                                 {isStudentDropdownOpen && (
                                                     <div className="absolute z-50 w-full mt-1 bg-white border border-stone-200 rounded-xl shadow-lg max-h-60 overflow-y-auto">
                                                         {students
-                                                            .filter(s => s.active)
                                                             .filter(s => s.name.toLowerCase().includes(studentSelectSearch.toLowerCase()) || s.dni.includes(studentSelectSearch))
                                                             .length === 0 ? (
                                                                 <div className="p-3 text-sm text-stone-400 text-center">No se encontraron alumnos</div>
                                                             ) : (
                                                                 students
-                                                                    .filter(s => s.active)
                                                                     .filter(s => s.name.toLowerCase().includes(studentSelectSearch.toLowerCase()) || s.dni.includes(studentSelectSearch))
+                                                                    .sort((a, b) => {
+                                                                        // Activos primero
+                                                                        if (a.active && !b.active) return -1;
+                                                                        if (!a.active && b.active) return 1;
+                                                                        return a.name.localeCompare(b.name);
+                                                                    })
                                                                     .map(s => (
                                                                         <button
                                                                             key={s.id}
@@ -2964,9 +3661,17 @@ function App() {
                                                                                 setStudentSelectSearch(s.name);
                                                                                 setIsStudentDropdownOpen(false);
                                                                             }}
-                                                                            className="w-full text-left p-3 hover:bg-stone-50 text-sm font-semibold text-stone-700 transition-colors border-b border-stone-50 last:border-0"
+                                                                            className={`w-full text-left p-3 hover:bg-stone-50 text-sm font-semibold text-stone-700 transition-colors border-b border-stone-50 last:border-0 ${!s.active ? 'opacity-75' : ''}`}
                                                                         >
-                                                                            {s.name} <span className="text-xs text-stone-400 font-normal">({s.level})</span>
+                                                                            <span className="flex items-center justify-between gap-2">
+                                                                                <span>{s.name} <span className="text-xs text-stone-400 font-normal">({s.level})</span></span>
+                                                                                {!s.active && (
+                                                                                    <span className="text-[10px] bg-rose-100 text-rose-600 font-bold px-1.5 py-0.5 rounded-full shrink-0">BAJA</span>
+                                                                                )}
+                                                                            </span>
+                                                                            {!s.active && studentDebts[s.id] > 0 && (
+                                                                                <span className="text-[10px] text-rose-500 font-bold">Deuda: ${studentDebts[s.id].toLocaleString()}</span>
+                                                                            )}
                                                                         </button>
                                                                     ))
                                                             )
@@ -2983,7 +3688,7 @@ function App() {
                                                         onChange={(e) => setNewPayment(prev => ({ ...prev, period: e.target.value }))}
                                                         className="w-full p-3.5 rounded-xl border border-stone-200 outline-none bg-stone-50 font-semibold text-base focus:ring-2 focus:ring-amber-500"
                                                     >
-                                                        {PERIODOS.map(p => <option key={p} value={p}>{p}</option>)}
+                                                        {paymentMissingPeriods.map(p => <option key={p} value={p}>{p}</option>)}
                                                     </select>
                                                 </div>
 
@@ -3200,10 +3905,6 @@ function App() {
                                             <thead>
                                                 <tr className="border-b border-stone-100 text-xs text-stone-400 font-bold uppercase">
                                                     <th className="py-3 px-4">Alumno</th>
-                                                    <th className="py-3 px-4">DNI</th>
-                                                    <th className="py-3 px-4">Sede / Nivel</th>
-                                                    <th className="py-3 px-4">Contacto</th>
-                                                    <th className="py-3 px-4 text-center">Estado</th>
                                                     <th className="py-3 px-4 text-right">Saldo Deudor</th>
                                                     <th className="py-3 px-4 text-center">Acciones</th>
                                                 </tr>
@@ -3211,7 +3912,7 @@ function App() {
                                             <tbody className="divide-y divide-stone-50">
                                                 {filteredStudents.length === 0 ? (
                                                     <tr>
-                                                        <td colSpan="6" className="text-center py-8 text-stone-400 text-sm">No se encontraron alumnos con los filtros seleccionados</td>
+                                                        <td colSpan="3" className="text-center py-8 text-stone-400 text-sm">No se encontraron alumnos con los filtros seleccionados</td>
                                                     </tr>
                                                 ) : (
                                                     filteredStudents.map(student => (
@@ -3223,22 +3924,6 @@ function App() {
                                                                     </div>
                                                                     <span className="font-bold text-stone-800">{student.name}</span>
                                                                 </div>
-                                                            </td>
-                                                            <td className="py-3.5 px-4 font-medium text-stone-500">{student.dni}</td>
-                                                            <td className="py-3.5 px-4">
-                                                                <p className="font-semibold text-stone-700">{student.sede}</p>
-                                                                <p className="text-xs text-stone-400">{student.level}</p>
-                                                            </td>
-                                                            <td className="py-3.5 px-4 text-stone-600">
-                                                                <p className="text-xs">{student.phone}</p>
-                                                                <p className="text-xs text-stone-400">{student.email || 'Sin correo'}</p>
-                                                            </td>
-                                                            <td className="py-3.5 px-4 text-center">
-                                                                <span className={`px-2 py-1 rounded-full text-xs font-bold ${
-                                                                    student.active ? 'bg-orange-50 text-orange-700' : 'bg-rose-50 text-rose-700'
-                                                                }`}>
-                                                                    {student.active ? 'Activo' : 'Baja'}
-                                                                </span>
                                                             </td>
                                                             <td className="py-3.5 px-4 text-right">
                                                                 <span className={`font-bold ${studentDebts[student.id] > 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
@@ -3353,7 +4038,7 @@ function App() {
                                     </button>
                                 </div>
 
-                                <form onSubmit={handleSaveStudent} className="space-y-4">
+                                <form key={editingStudent ? editingStudent.id : 'new'} onSubmit={handleSaveStudent} className="space-y-4">
                                     <div>
                                         <label className="block text-xs font-bold text-stone-500 uppercase mb-2">Apellido y Nombre</label>
                                         <input 
@@ -3372,7 +4057,21 @@ function App() {
                                                 type="text" 
                                                 name="dni"
                                                 defaultValue={editingStudent?.dni || ""}
-                                                className="w-full p-3 rounded-xl border border-stone-200 outline-none bg-stone-50"
+                                                onChange={(e) => {
+                                                    if (!editingStudent) {
+                                                        const val = e.target.value.trim();
+                                                        if (val.length >= 7) {
+                                                            const found = students.find(s => s.dni === val);
+                                                            if (found) {
+                                                                setEditingStudent(found);
+                                                                setModalActive(found.active !== false);
+                                                                setModalFechaBaja(found.fecha_baja || "");
+                                                                addNotification(`Estudiante ${found.name} encontrado en el historial. Sus datos han sido cargados.`, "info");
+                                                            }
+                                                        }
+                                                    }
+                                                }}
+                                                className="w-full p-3 rounded-xl border border-stone-200 outline-none bg-stone-50 focus:border-amber-500 transition-colors"
                                                 required 
                                                 disabled={!!editingStudent}
                                             />
@@ -3480,15 +4179,39 @@ function App() {
                                         </div>
                                     </div>
 
-                                    <div className="flex items-center gap-3 pt-4 border-t border-stone-100">
-                                        <input 
-                                            type="checkbox" 
-                                            name="active" 
-                                            id="chk-active"
-                                            defaultChecked={editingStudent ? editingStudent.active : true}
-                                            className="w-5 h-5 accent-amber-500"
-                                        />
-                                        <label for="chk-active" className="text-sm font-bold text-stone-700">Estado de Matrícula Activo</label>
+                                    <div className="pt-4 border-t border-stone-100 space-y-3">
+                                        <div className="flex items-center gap-3">
+                                            <input 
+                                                type="checkbox" 
+                                                name="active" 
+                                                id="chk-active"
+                                                checked={modalActive}
+                                                onChange={(e) => {
+                                                    setModalActive(e.target.checked);
+                                                    if (!e.target.checked && !modalFechaBaja) {
+                                                        setModalFechaBaja(new Date().toISOString().split('T')[0]);
+                                                    }
+                                                }}
+                                                className="w-5 h-5 accent-amber-500"
+                                            />
+                                            <label htmlFor="chk-active" className="text-sm font-bold text-stone-700">Estado de Matrícula Activo</label>
+                                        </div>
+                                        {!modalActive && (
+                                            <div className="bg-rose-50 p-3 rounded-xl border border-rose-200 animate-fadeIn">
+                                                <label className="block text-xs font-bold text-rose-600 uppercase mb-1.5">
+                                                    <i className="fas fa-calendar-times mr-1"></i> Fecha de Baja *
+                                                </label>
+                                                <input 
+                                                    type="date" 
+                                                    name="fecha_baja"
+                                                    value={modalFechaBaja}
+                                                    onChange={(e) => setModalFechaBaja(e.target.value)}
+                                                    className="w-full p-2.5 rounded-lg border border-rose-300 outline-none bg-white font-semibold text-sm"
+                                                    required
+                                                />
+                                                <p className="text-[10px] text-rose-400 mt-1">La deuda se calculará hasta este mes</p>
+                                            </div>
+                                        )}
                                     </div>
 
                                     <div className="pt-6 flex gap-3">
@@ -3523,6 +4246,7 @@ function App() {
                                         <div>
                                             <h3 className="text-xl font-bold text-stone-800">{selectedStudentDetail.name}</h3>
                                             <p className="text-xs text-stone-400">DNI: {selectedStudentDetail.dni} | {selectedStudentDetail.sede}</p>
+                                            <p className="text-xs text-stone-500 font-medium mt-0.5">Nivel / Curso: <span className="font-bold text-stone-700">{selectedStudentDetail.level || selectedStudentDetail.taller || 'Sin nivel asignado'}</span></p>
                                             {selectedStudentDetail.fecha_inicio && (
                                                 <p className="text-xs font-semibold text-amber-600 mt-1">
                                                     Inscripto el: {formatDate(selectedStudentDetail.fecha_inicio)}
@@ -3561,29 +4285,36 @@ function App() {
                                             <h4 className="text-xs font-bold text-stone-400 uppercase">Estado Financiero</h4>
                                             <div className="text-right">
                                                 <p className={`text-xl font-extrabold ${studentDebts[selectedStudentDetail.id] > 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
-                                                    Saldo: ${studentDebts[selectedStudentDetail.id]?.toLocaleString() || 0}
+                                                    Saldo Total: ${studentDebts[selectedStudentDetail.id]?.toLocaleString() || 0}
                                                 </p>
-                                                {studentDebts[selectedStudentDetail.id] > 0 && activeStudentStats.missingPeriods.length > 0 && (
-                                                    <p className="text-[10px] text-rose-500 font-bold">Meses impagos: {activeStudentStats.missingPeriods.join(', ')}</p>
-                                                )}
                                             </div>
                                         </div>
                                         <div className="space-y-3">
-                                            <div className="flex flex-wrap gap-1.5">
-                                                {(activeStudentStats.expectedPeriods || ["Marzo", "Abril", "Mayo", "Junio"]).map(month => {
-                                                    const isPaid = activeStudentStats.paidPeriods.includes(month);
-                                                    return (
-                                                        <span 
-                                                            key={month} 
-                                                            className={`text-[10px] px-2 py-1 rounded-full font-bold ${
-                                                                isPaid ? 'bg-orange-100 text-orange-800' : 'bg-rose-100 text-rose-800'
-                                                            }`}
-                                                        >
-                                                            {month}: {isPaid ? 'Al día' : 'Impago'}
+                                            {/* Desglose por año */}
+                                            {activeStudentStats.yearlyBreakdown && activeStudentStats.yearlyBreakdown.map(yb => (
+                                                <div key={yb.year} className="bg-white p-3 rounded-xl border border-stone-100">
+                                                    <div className="flex justify-between items-center mb-2">
+                                                        <h5 className="text-xs font-extrabold text-stone-700">
+                                                            <i className="fas fa-calendar-alt mr-1 text-amber-500"></i>
+                                                            Año {yb.year}
+                                                        </h5>
+                                                        <span className={`text-sm font-extrabold ${yb.debt > 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
+                                                            {yb.debt > 0 ? `Debe: $${yb.debt.toLocaleString()}` : 'Al día ✓'}
                                                         </span>
-                                                    );
-                                                })}
-                                            </div>
+                                                    </div>
+                                                    <div className="text-[10px] text-stone-500 mb-2">
+                                                        {yb.monthCount} cuota{yb.monthCount !== 1 ? 's' : ''} + inscripción · 
+                                                        Total esperado: <span className="font-bold">${yb.totalExpected.toLocaleString()}</span>
+                                                        {yb.totalPaid > 0 && (<> · Pagado: <span className="font-bold text-emerald-600">${yb.totalPaid.toLocaleString()}</span></>)}
+                                                    </div>
+                                                    {yb.missingMonths.length > 0 && (
+                                                        <p className="text-[10px] text-rose-500 font-bold">
+                                                            Meses impagos: {yb.missingMonths.join(', ')}
+                                                        </p>
+                                                    )}
+                                                </div>
+                                            ))}
+
                                             <div className="flex gap-4 text-[11px] text-stone-500 font-medium bg-white p-2 rounded-lg border border-stone-100">
                                                 <p>Cuota mensual: <span className="font-bold text-stone-700">${activeStudentStats.valorCuota.toLocaleString()}</span></p>
                                                 <p>Inscripción: <span className="font-bold text-stone-700">${activeStudentStats.valorInscripcion.toLocaleString()}</span></p>
@@ -3644,7 +4375,10 @@ function App() {
                                         </button>
                                     ) : (
                                         <button
-                                            onClick={() => setShowBoletin(true)}
+                                            onClick={() => {
+                                                setBoletinStudent(selectedStudentDetail);
+                                                setShowBoletin(true);
+                                            }}
                                             className="bg-stone-800 hover:bg-stone-900 text-white font-bold py-2.5 px-6 rounded-xl text-sm transition-all shadow-md flex items-center gap-2"
                                         >
                                             <i className="fas fa-file-invoice"></i> Generar Boletín
@@ -3749,7 +4483,7 @@ function App() {
                                         <div className="bg-amber-50/60 border border-amber-200/50 rounded-xl p-3 text-xs space-y-1.5 mt-2 animate-fadeIn">
                                             {activeReceipt.periodBalance > 0 && (
                                                 <div className="flex justify-between text-amber-900 font-semibold">
-                                                    <span>Saldo pendiente de este período ({activeReceipt.period}):</span>
+                                                    <span>Saldo pendiente de este período ({activeReceipt.period} {activeReceipt.date ? activeReceipt.date.substring(0, 4) : ''}):</span>
                                                     <span className="font-extrabold">${activeReceipt.periodBalance.toLocaleString()}</span>
                                                 </div>
                                             )}
@@ -3879,7 +4613,7 @@ function App() {
                                         <div style={{ backgroundColor: "#fef3c7", border: "1px solid #fde68a", borderRadius: "6px", padding: "10px", marginTop: "15px", fontSize: "11px", lineHeight: "1.4" }}>
                                             {activeReceipt.periodBalance > 0 && (
                                                 <div style={{ display: "flex", justifyContent: "space-between", color: "#78350f", fontWeight: "600" }}>
-                                                    <span>Saldo pendiente de este período ({activeReceipt.period}):</span>
+                                                    <span>Saldo pendiente de este período ({activeReceipt.period} {activeReceipt.date ? activeReceipt.date.substring(0, 4) : ''}):</span>
                                                     <span><strong>${activeReceipt.periodBalance.toLocaleString()}</strong></span>
                                                 </div>
                                             )}
@@ -3904,17 +4638,77 @@ function App() {
                     )}
 
 
-                    {showBoletin && selectedStudentDetail && (
+                    {showHistorialModal && historialStudent && (
+                        <HistorialModal
+                            student={historialStudent}
+                            configLevels={configLevels}
+                            allLevels={NIVELES}
+                            mesasGrades={mesasGrades}
+                            mesasColumns={mesasColumns}
+                            onClose={() => { setShowHistorialModal(false); setHistorialStudent(null); }}
+                            onUpdateGrade={handleUpdateHistorialGrade}
+                            onToggleAbsent={handleToggleHistorialStudent}
+                            onOpenBoletinHistorial={(student) => {
+                                setBoletinHistorialStudent(student);
+                                setShowBoletinHistorial(true);
+                                setShowAnalitico(false);
+                            }}
+                            onOpenAnalitico={(student) => {
+                                setAnaliticoStudent(student);
+                                setShowAnalitico(true);
+                                setShowBoletinHistorial(false);
+                            }}
+                        />
+                    )}
+
+                    {showBoletin && boletinStudent && (
                         <BoletinPreview 
-                            student={selectedStudentDetail}
+                            student={boletinStudent}
                             sedeObj={sedes.find(s => s.nombre === globalSede)}
                             grades={grades}
-                            gradeColumns={gradeColumns[selectedStudentDetail.level] || []}
+                            gradeColumns={gradeColumns[boletinStudent.level] || []}
                             mesasGrades={mesasGrades}
                             mesasColumns={mesasColumns}
                             attendance={attendance}
                             profesorName={generalConfig?.profesor || (currentUser?.dni === 'admin' ? sedeProfesor?.nombre : currentUser?.nombre)}
-                            onClose={() => setShowBoletin(false)}
+                            onClose={() => {
+                                setShowBoletin(false);
+                                setBoletinStudent(null);
+                            }}
+                        />
+                    )}
+
+                    {showBoletinHistorial && boletinHistorialStudent && (
+                        <BoletinHistorialPreview
+                            student={boletinHistorialStudent}
+                            sedeObj={sedes.find(s => s.nombre === globalSede)}
+                            grades={grades}
+                            gradeColumns={gradeColumns}
+                            mesasGrades={mesasGrades}
+                            mesasColumns={mesasColumns}
+                            attendance={attendance}
+                            configLevels={configLevels}
+                            profesorName={generalConfig?.profesor || (currentUser?.dni === 'admin' ? sedeProfesor?.nombre : currentUser?.nombre)}
+                            onClose={() => {
+                                setShowBoletinHistorial(false);
+                                setBoletinHistorialStudent(null);
+                            }}
+                        />
+                    )}
+
+                    {showAnalitico && analiticoStudent && (
+                        <CertificadoAnaliticoPreview
+                            student={analiticoStudent}
+                            sedeObj={sedes.find(s => s.nombre === globalSede)}
+                            mesasGrades={mesasGrades}
+                            mesasColumns={mesasColumns}
+                            configLevels={configLevels}
+                            allLevels={NIVELES}
+                            profesorName={generalConfig?.profesor || (currentUser?.dni === 'admin' ? sedeProfesor?.nombre : currentUser?.nombre)}
+                            onClose={() => {
+                                setShowAnalitico(false);
+                                setAnaliticoStudent(null);
+                            }}
                         />
                     )}
 
@@ -3925,3 +4719,4 @@ function App() {
         // Renderizado
 
 export default App;
+
