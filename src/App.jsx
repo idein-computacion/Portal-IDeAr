@@ -907,7 +907,7 @@ function App() {
                 cuerpo: editedCuerpo
             };
 
-            const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbx1mZPGaVuazIkUHxp592MFot0rhBDHOoehbNyRy5SFWFqDbFHXBL9-qhXaqBS9CUF6/exec";
+            const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwv_BLt6KWt-e6pvzKIHbOx95OsdAIT0dbaAVqUJC9tCv7Jm602PkWxjv3hC7473sVT/exec";
 
             await fetch(GOOGLE_SCRIPT_URL, {
                 method: "POST",

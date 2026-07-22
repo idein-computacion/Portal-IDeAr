@@ -17,10 +17,12 @@ const StudentHistorialModal = ({
     onOpenAnalitico
 }) => {
     const studentLevelIdx = allLevels.indexOf(student.level);
-    const relevantLevels = configLevels.filter(c => {
-        const idx = allLevels.indexOf(c.curso_nivel);
-        return idx !== -1 && idx <= studentLevelIdx;
-    });
+    const relevantLevels = configLevels
+        .filter(c => {
+            const idx = allLevels.indexOf(c.curso_nivel);
+            return idx !== -1 && idx <= studentLevelIdx;
+        })
+        .sort((a, b) => allLevels.indexOf(a.curso_nivel) - allLevels.indexOf(b.curso_nivel));
 
     return (
         <div className="fixed inset-0 bg-stone-900/80 z-[100] flex flex-col items-center justify-center p-4 animate-fadeIn no-print">
