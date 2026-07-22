@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { METODOS_PAGO, PERIODOS, NIVELES } from './data/seedData';
 import { rtdb } from './config/firebase';
-import { ref, set, remove, update } from 'firebase/database';
+import { ref, set, get, remove, update } from 'firebase/database';
 
 import DashboardRecibos from './components/DashboardRecibos';
 import Config from './components/Config';
@@ -16,6 +16,7 @@ import BoletinModal from './components/modals/BoletinModal';
 import ReceiptModal from './components/modals/ReceiptModal';
 import StudentModal from './components/modals/StudentModal';
 import StudentDetailModal from './components/modals/StudentDetailModal';
+import ReminderPreviewModal from './components/modals/ReminderPreviewModal';
 
 import DashboardTab from './components/tabs/DashboardTab';
 import AttendanceTab from './components/tabs/AttendanceTab';
@@ -84,6 +85,7 @@ function App() {
     const [showAnalitico, setShowAnalitico] = useState(false);
 
     const [isSendingEmail, setIsSendingEmail] = useState(false);
+    const [reminderPreview, setReminderPreview] = useState(null);
     const [lastReadTime, setLastReadTime] = useState(() => Number(localStorage.getItem('idear_last_aviso')) || 0);
 
     const [isFirstTime, setIsFirstTime] = useState(false);
@@ -170,45 +172,83 @@ function App() {
     const handleAuthSubmit = async (e) => {
         e.preventDefault();
         
-        if (tempSede === "Leandro N. Alem" && !hasAdmin) {
-            if (!authNombre.trim() || !authPassword.trim()) {
-                addNotification("Nombre y contraseña requeridos", "error");
+        const username = authDni.trim().toLowerCase();
+        const pwd = authPassword;
+
+        if (!username || !pwd) {
+            addNotification("Por favor, completa todos los campos", "error");
+            return;
+        }
+
+        // "admin" es un usuario especial válido en todas las sedes; los profesores usan su DNI numérico
+        if (username !== "admin" && !/^\d+$/.test(username)) {
+            addNotification("El DNI debe contener solo números", "error");
+            return;
+        }
+
+        const isAlemAdminSetup = tempSede === "Leandro N. Alem" && !hasAdmin;
+
+        if (isAlemAdminSetup) {
+            if (!authNombre.trim()) {
+                addNotification("Por favor, completa tu Nombre Completo", "error");
                 return;
             }
             const adminUser = {
-                id: 'usr-admin-alem',
                 dni: 'admin',
-                nombre: authNombre,
-                password: authPassword,
-                sede: tempSede,
+                nombre: authNombre.trim(),
+                password: pwd,
+                sede: "Leandro N. Alem",
                 rol: 'Director'
             };
             try {
-                await set(ref(rtdb, `users/usr-admin-alem`), adminUser);
-                addNotification("Administrador registrado con éxito", "success");
+                await set(ref(rtdb, `usuarios/admin`), adminUser);
+                addNotification("Cuenta Administrador Principal inicializada correctamente", "success");
                 setHasAdmin(true);
+                localStorage.setItem('idear_user', JSON.stringify(adminUser));
+                localStorage.setItem('idear_sede', "Leandro N. Alem");
+                setGlobalSede("Leandro N. Alem");
+                setCurrentUser(adminUser);
+                setTempSede(null);
+                setAuthDni("");
+                setAuthPassword("");
+                setAuthNombre("");
             } catch (err) {
                 addNotification("Error registrando administrador", "error");
-                return;
             }
+            return;
         }
 
-        const username = authDni.trim().toLowerCase();
-        const pwd = authPassword;
-        const match = users.find(u => u.sede === tempSede && u.dni.toLowerCase() === username && u.password === pwd);
+        try {
+            const userRef = ref(rtdb, `usuarios/${username}`);
+            const snapshot = await get(userRef);
 
-        if (match) {
-            addNotification("Acceso concedido", "success");
-            localStorage.setItem('idear_sede', tempSede);
-            localStorage.setItem('idear_user', JSON.stringify(match));
-            setGlobalSede(tempSede);
-            setCurrentUser(match);
-            setTempSede(null);
-            setAuthDni("");
-            setAuthPassword("");
-            setAuthNombre("");
-        } else {
-            addNotification("Credenciales inválidas para esta sede", "error");
+            if (snapshot.exists()) {
+                const userData = snapshot.val();
+                if (userData.password === pwd) {
+                    const userSedes = userData.sede ? userData.sede.split(',').map(s => s.trim()) : [];
+                    const hasAccess = userSedes.includes(tempSede) || userSedes.includes("Leandro N. Alem");
+                    if (hasAccess) {
+                        addNotification(`¡Bienvenido, Prof. ${userData.nombre}!`, "success");
+                        localStorage.setItem('idear_sede', tempSede);
+                        localStorage.setItem('idear_user', JSON.stringify(userData));
+                        setGlobalSede(tempSede);
+                        setCurrentUser(userData);
+                        setTempSede(null);
+                        setAuthDni("");
+                        setAuthPassword("");
+                        setAuthNombre("");
+                    } else {
+                        addNotification(`Tu usuario está registrado para: "${userData.sede}". No tienes acceso a "${tempSede}".`, "error");
+                    }
+                } else {
+                    addNotification("Contraseña incorrecta", "error");
+                }
+            } else {
+                addNotification("Usuario no registrado", "error");
+            }
+        } catch (err) {
+            console.error("Error al autenticar:", err);
+            addNotification("Error de conexión al autenticar", "error");
         }
     };
 
@@ -223,14 +263,15 @@ function App() {
     const handleSaveStudent = async (e) => {
         e.preventDefault();
         const formData = new FormData(e.target);
-        const dni = formData.get("dni").trim();
-        const name = formData.get("name").trim();
-        const phone = formData.get("phone").trim();
-        const email = formData.get("email").trim();
+        const dniRaw = formData.get("dni");
+        const dni = editingStudent ? editingStudent.dni : (dniRaw ? dniRaw.trim() : "");
+        const name = (formData.get("name") || "").trim();
+        const phone = (formData.get("phone") || "").trim();
+        const email = (formData.get("email") || "").trim();
         const sede = formData.get("sede");
         const fecha_inicio = formData.get("fecha_inicio");
-        const tutor = formData.get("tutor").trim();
-        const address = formData.get("address").trim();
+        const tutor = (formData.get("tutor") || "").trim();
+        const address = (formData.get("address") || "").trim();
 
         if (!dni || !name || !fecha_inicio) {
             addNotification("DNI, Nombre y Fecha de Inicio son requeridos", "error");
@@ -778,14 +819,12 @@ function App() {
         }
     };
 
-    const handleSendReminder = async (studentTarget = null) => {
+    const handleSendReminder = (studentTarget = null) => {
         const targetStudent = studentTarget?.id ? studentTarget : selectedStudentDetail;
         if (!targetStudent || !targetStudent.email) {
             addNotification("El alumno no tiene un correo registrado.", "error");
             return;
         }
-
-        setIsSendingEmail(true);
 
         try {
             let missingPeriods = [];
@@ -840,10 +879,32 @@ function App() {
                 if (missingPeriods.length === 0) missingPeriods.push("Deuda parcial o matrículas");
             }
 
-            const payload = {
+            const debtValue = studentDebts[targetStudent.id] || 0;
+            const cuerpoText = `Hola.\n\nNos comunicamos desde el Instituto para el Desarrollo del Arte (IDeAr).\n\nLe informamos que, al día de la fecha, la alumna/o ${targetStudent.name} registra un saldo pendiente de $${debtValue.toLocaleString()}, correspondiente a las cuotas/conceptos impagos de: ${missingPeriods.join(', ')}.\n\nLe recordamos que el valor de la cuota mensual es de $${valorCuota.toLocaleString()}.\n\nSi el pago ya fue realizado recientemente, le solicitamos desestimar este mensaje o, si corresponde, enviarnos el comprobante para actualizar nuestros registros.\n\nAnte cualquier consulta, quedamos a su disposición.\n\nMuchas gracias.\n\nSaludos cordiales,\nEquipo IDeAr - Sede ${targetStudent.sede}`;
+
+            setReminderPreview({
+                targetStudent,
                 email: targetStudent.email,
                 asunto: 'Recordatorio de Pago - Instituto IDeAr',
-                cuerpo: `Hola.\n\nNos comunicamos desde el Instituto para el Desarrollo del Arte (IDeAr).\n\nLe informamos que, al día de la fecha, la alumna/o ${targetStudent.name} registra un saldo pendiente de $${studentDebts[targetStudent.id].toLocaleString()}, correspondiente a las cuotas/conceptos impagos de: ${missingPeriods.join(', ')}.\n\nLe recordamos que el valor de la cuota mensual es de $${valorCuota.toLocaleString()}.\n\nAgradeceremos pueda regularizar esta situación a la brevedad. Si el pago ya fue realizado recientemente, le solicitamos desestimar este mensaje o, si corresponde, enviarnos el comprobante para actualizar nuestros registros.\n\nAnte cualquier consulta, quedamos a su disposición.\n\nMuchas gracias.\n\nSaludos cordiales,\nEquipo IDeAr - Sede ${targetStudent.sede}`
+                cuerpo: cuerpoText
+            });
+        } catch (error) {
+            console.error("Error armando recordatorio:", error);
+            addNotification("Error al procesar el recordatorio.", "error");
+        }
+    };
+
+    const handleConfirmSendReminder = async (editedEmail, editedAsunto, editedCuerpo) => {
+        if (!reminderPreview) return;
+        const { targetStudent } = reminderPreview;
+
+        setIsSendingEmail(true);
+
+        try {
+            const payload = {
+                email: editedEmail,
+                asunto: editedAsunto,
+                cuerpo: editedCuerpo
             };
 
             const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbx1mZPGaVuazIkUHxp592MFot0rhBDHOoehbNyRy5SFWFqDbFHXBL9-qhXaqBS9CUF6/exec";
@@ -864,7 +925,8 @@ function App() {
                 setSelectedStudentDetail(prev => ({ ...prev, lastReminderPeriod: currentPeriod }));
             }
 
-            addNotification("¡Recordatorio enviado en segundo plano!", "success");
+            addNotification("¡Recordatorio enviado con éxito!", "success");
+            setReminderPreview(null);
         } catch (error) {
             console.error("Error enviando recordatorio:", error);
             addNotification("Error al intentar enviar el recordatorio.", "error");
@@ -1339,6 +1401,9 @@ function App() {
                 handleAuthSubmit={handleAuthSubmit}
                 notifications={notifications}
                 sedes={sedes}
+                currentUser={currentUser}
+                setGlobalSede={setGlobalSede}
+                addNotification={addNotification}
             />
         );
     }
@@ -1736,6 +1801,15 @@ function App() {
                         setShowAnalitico(false);
                         setAnaliticoStudent(null);
                     }}
+                />
+            )}
+
+            {reminderPreview && (
+                <ReminderPreviewModal
+                    reminderPreview={reminderPreview}
+                    onClose={() => setReminderPreview(null)}
+                    onConfirm={handleConfirmSendReminder}
+                    isSending={isSendingEmail}
                 />
             )}
 

@@ -1,0 +1,25 @@
+body {
+    font-family: 'Plus Jakarta Sans', sans-serif;
+}
+@media print {
+    .no-print {
+        display: none !important;
+    }
+    .print-only {
+        display: block !important;
+        background: white !important;
+        color: black !important;
+        padding: 0 !important;
+        margin: 0 !important;
+    }
+}
+/* Chrome, Safari, Edge, Opera: Quitar flechas de input number */
+input::-webkit-outer-spin-button,
+input::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+/* Firefox: Quitar flechas de input number */
+input[type=number] {
+    -moz-appearance: textfield;
+}

@@ -18,7 +18,10 @@ const LoginSedeModal = ({
     loading,
     handleAuthSubmit,
     notifications,
-    sedes
+    sedes,
+    currentUser,
+    setGlobalSede,
+    addNotification
 }) => {
     if (tempSede) {
         return (
@@ -174,11 +177,22 @@ const LoginSedeModal = ({
                         <button
                             key={s.id}
                             onClick={() => {
-                                setTempSede(s.nombre);
-                                setAuthDni("");
-                                setAuthPassword("");
-                                setAuthNombre("");
-                                setIsFirstTime(false);
+                                if (currentUser) {
+                                    const userSedes = currentUser.sede ? currentUser.sede.split(',').map(name => name.trim()) : [];
+                                    const hasAccess = userSedes.includes(s.nombre) || userSedes.includes("Leandro N. Alem");
+                                    if (hasAccess) {
+                                        localStorage.setItem('idear_sede', s.nombre);
+                                        setGlobalSede(s.nombre);
+                                    } else {
+                                        addNotification(`Tu usuario está registrado para: "${currentUser.sede}". No tienes acceso a "${s.nombre}".`, "error");
+                                    }
+                                } else {
+                                    setTempSede(s.nombre);
+                                    setAuthDni("");
+                                    setAuthPassword("");
+                                    setAuthNombre("");
+                                    setIsFirstTime(false);
+                                }
                             }}
                             className="bg-stone-50 hover:bg-orange-500 hover:text-white border-2 border-stone-200 hover:border-orange-500 text-stone-800 p-6 rounded-2xl font-black text-lg transition-all shadow-md active:scale-95 cursor-pointer uppercase flex flex-col items-center justify-center gap-2"
                         >

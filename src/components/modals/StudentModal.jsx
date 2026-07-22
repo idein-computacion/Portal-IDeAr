@@ -74,9 +74,9 @@ const StudentModal = ({
                                         }
                                     }
                                 }}
-                                className="w-full p-3 rounded-xl border border-stone-200 outline-none bg-stone-50 focus:border-amber-500 transition-colors"
+                                className={`w-full p-3 rounded-xl border border-stone-200 outline-none focus:border-amber-500 transition-colors ${editingStudent ? 'bg-stone-100 text-stone-400 cursor-not-allowed' : 'bg-stone-50 text-stone-850'}`}
                                 required 
-                                disabled={!!editingStudent}
+                                readOnly={!!editingStudent}
                             />
                         </div>
                         <div>

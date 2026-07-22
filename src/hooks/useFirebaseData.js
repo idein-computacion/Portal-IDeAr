@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
-import { ref, onValue } from 'firebase/database';
+import { ref, onValue, get, set } from 'firebase/database';
 import { rtdb } from '../config/firebase';
+import { SEED_CONFIG } from '../data/seedData';
 
 /**
  * Custom Hook para gestionar todos los listeners en tiempo real de Firebase.
@@ -117,6 +118,18 @@ export function useFirebaseData(globalSede) {
 
         const safeSede = globalSede.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\./g, '');
 
+        const sembrarConSemilla = (targetRef) => {
+            const seedObj = { info: { profesor: "" } };
+            const seedList = SEED_CONFIG.map((c, idx) => {
+                const newObj = { id: `config-${idx}`, ...c };
+                seedObj[`config-${idx}`] = c;
+                return newObj;
+            });
+            set(targetRef, seedObj).catch(err => console.error("Error sembrando config:", err));
+            setGeneralConfig({ profesor: "" });
+            setConfigLevels(seedList);
+        };
+
         // Configuración de la sede (niveles y generalConfig)
         const configRef = ref(rtdb, `config/${safeSede}`);
         const unsubConfig = onValue(configRef, (snapshot) => {
@@ -128,8 +141,25 @@ export function useFirebaseData(globalSede) {
                 const lista = Object.values(data).filter(x => x && typeof x === 'object' && x.id);
                 setConfigLevels(lista);
             } else {
-                setGeneralConfig({ profesor: "" });
-                setConfigLevels([]);
+                if (safeSede !== "Leandro N Alem") {
+                    get(ref(rtdb, 'config/Leandro N Alem')).then((alemSnapshot) => {
+                        const alemData = alemSnapshot.val();
+                        if (alemData) {
+                            const copyData = { ...alemData, info: { profesor: "" } };
+                            set(configRef, copyData).catch(err => console.error("Error copiando config de Alem:", err));
+                            
+                            setGeneralConfig({ profesor: "" });
+                            const lista = Object.values(copyData).filter(x => x && typeof x === 'object' && x.id);
+                            setConfigLevels(lista);
+                        } else {
+                            sembrarConSemilla(configRef);
+                        }
+                    }).catch(() => {
+                        sembrarConSemilla(configRef);
+                    });
+                } else {
+                    sembrarConSemilla(configRef);
+                }
             }
         });
         unsubscribes.push(unsubConfig);

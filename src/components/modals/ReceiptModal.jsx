@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { formatDate } from '../../utils/formatters';
 import { getReceiptBreakdown } from '../../utils/receiptHelpers';
+import ReminderPreviewModal from './ReminderPreviewModal';
 
 /**
  * Modal Visor de Recibo Oficial Alta Fidelidad.
@@ -17,6 +18,7 @@ const ReceiptModal = ({
     setIsSendingEmail,
     addNotification
 }) => {
+    const [receiptEmailPreview, setReceiptEmailPreview] = useState(null);
     const handlePrintReceipt = () => {
         window.print();
     };
@@ -34,7 +36,6 @@ const ReceiptModal = ({
 
         setIsSendingEmail(true);
         
-        // Usar el elemento original y hacerlo visible temporalmente
         const printContainer = document.querySelector('.print-only');
         if (!printContainer) {
             setIsSendingEmail(false);
@@ -77,22 +78,10 @@ const ReceiptModal = ({
                 pdfName: `Recibo_${activeReceipt.receiptNo}.pdf`
             };
 
-            const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbx1mZPGaVuazIkUHxp592MFot0rhBDHOoehbNyRy5SFWFqDbFHXBL9-qhXaqBS9CUF6/exec";
-
-            await fetch(GOOGLE_SCRIPT_URL, {
-                method: "POST",
-                mode: "no-cors",
-                headers: {
-                    "Content-Type": "application/json",
-                },
-                body: JSON.stringify(payload)
-            });
-            
-            addNotification("¡El correo se está enviando en segundo plano!", "success");
-            onClose();
+            setReceiptEmailPreview(payload);
         } catch (error) {
-            console.error("Error enviando email:", error);
-            addNotification("Error al intentar enviar el correo.", "error");
+            console.error("Error generando PDF para email:", error);
+            addNotification("Error al intentar procesar el comprobante.", "error");
         } finally {
             printContainer.classList.add('hidden');
             printContainer.style.position = '';
@@ -104,6 +93,40 @@ const ReceiptModal = ({
             printContainer.style.zIndex = '';
             printContainer.style.overflow = '';
             
+            setIsSendingEmail(false);
+        }
+    };
+
+    const handleConfirmSendReceipt = async (editedEmail, editedAsunto, editedCuerpo) => {
+        if (!receiptEmailPreview) return;
+
+        setIsSendingEmail(true);
+        try {
+            const finalPayload = {
+                ...receiptEmailPreview,
+                email: editedEmail,
+                asunto: editedAsunto,
+                cuerpo: editedCuerpo
+            };
+
+            const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbx1mZPGaVuazIkUHxp592MFot0rhBDHOoehbNyRy5SFWFqDbFHXBL9-qhXaqBS9CUF6/exec";
+
+            await fetch(GOOGLE_SCRIPT_URL, {
+                method: "POST",
+                mode: "no-cors",
+                headers: {
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify(finalPayload)
+            });
+
+            addNotification("¡El comprobante se envió con éxito por correo!", "success");
+            setReceiptEmailPreview(null);
+            onClose();
+        } catch (error) {
+            console.error("Error enviando email de recibo:", error);
+            addNotification("Error al intentar enviar el correo.", "error");
+        } finally {
             setIsSendingEmail(false);
         }
     };
@@ -319,6 +342,14 @@ const ReceiptModal = ({
                     </div>
                 </div>
             </div>
+            {receiptEmailPreview && (
+                <ReminderPreviewModal
+                    reminderPreview={receiptEmailPreview}
+                    onClose={() => setReceiptEmailPreview(null)}
+                    onConfirm={handleConfirmSendReceipt}
+                    isSending={isSendingEmail}
+                />
+            )}
         </>
     );
 };
