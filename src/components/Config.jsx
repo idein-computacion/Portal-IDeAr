@@ -482,6 +482,75 @@ function Config({ configLevels, setConfigLevels, addNotification, globalSede, ge
                 </div>
             </div>
 
+            {/* ─── Inscripción a Mesas de Examen ─── */}
+            <div className="bg-white p-6 rounded-3xl shadow-sm border border-stone-100 lg:col-span-2">
+                <h3 className="text-lg font-bold text-stone-800 mb-1 flex items-center gap-2">
+                    <i className="fas fa-gavel text-emerald-600"></i> Inscripción a Mesas de Examen (Portal Alumno)
+                </h3>
+                <p className="text-sm text-stone-400 mb-5">
+                    Habilitá la inscripción a mesas de examen desde el portal del alumno. Los alumnos podrán inscribirse solo durante el período que definas.
+                </p>
+
+                <div className="bg-stone-50 border border-stone-100 rounded-2xl p-5 space-y-5">
+                    {/* Toggle habilitación */}
+                    <div className="flex items-center justify-between gap-4">
+                        <div>
+                            <p className="font-bold text-stone-700 text-sm">Inscripción habilitada</p>
+                            <p className="text-xs text-stone-400">Activa para que los alumnos puedan inscribirse desde su portal</p>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={() => setGeneralConfig({ ...generalConfig, habilitarInscripcionMesas: !generalConfig?.habilitarInscripcionMesas })}
+                            className={`relative inline-flex h-7 w-14 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none ${generalConfig?.habilitarInscripcionMesas ? 'bg-emerald-500' : 'bg-stone-300'}`}
+                        >
+                            <span className={`inline-block h-6 w-6 transform rounded-full bg-white shadow transition-transform duration-200 ${generalConfig?.habilitarInscripcionMesas ? 'translate-x-7' : 'translate-x-0'}`}></span>
+                        </button>
+                    </div>
+
+                    {/* Fechas */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div>
+                            <label className="block text-xs font-bold text-stone-500 uppercase mb-2">
+                                <i className="fas fa-calendar-plus mr-1 text-emerald-500"></i>Fecha de Inicio
+                            </label>
+                            <input
+                                type="date"
+                                value={generalConfig?.fechaInicioInscripcionMesas || ''}
+                                onChange={(e) => setGeneralConfig({ ...generalConfig, fechaInicioInscripcionMesas: e.target.value })}
+                                className="w-full p-3 rounded-xl border border-stone-200 outline-none bg-white font-semibold focus:ring-2 focus:ring-emerald-400 transition-all"
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-xs font-bold text-stone-500 uppercase mb-2">
+                                <i className="fas fa-calendar-times mr-1 text-rose-500"></i>Fecha de Cierre
+                            </label>
+                            <input
+                                type="date"
+                                value={generalConfig?.fechaFinInscripcionMesas || ''}
+                                onChange={(e) => setGeneralConfig({ ...generalConfig, fechaFinInscripcionMesas: e.target.value })}
+                                className="w-full p-3 rounded-xl border border-stone-200 outline-none bg-white font-semibold focus:ring-2 focus:ring-rose-400 transition-all"
+                            />
+                        </div>
+                    </div>
+
+                    {/* Status indicator */}
+                    <div className={`rounded-xl p-3 text-sm font-semibold flex items-center gap-2 ${generalConfig?.habilitarInscripcionMesas ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' : 'bg-stone-100 text-stone-500'}`}>
+                        <i className={`fas ${generalConfig?.habilitarInscripcionMesas ? 'fa-check-circle text-emerald-500' : 'fa-lock text-stone-400'}`}></i>
+                        {generalConfig?.habilitarInscripcionMesas
+                            ? `Inscripción ACTIVA para los alumnos de ${globalSede}`
+                            : 'Inscripción deshabilitada — los alumnos no pueden inscribirse'}
+                    </div>
+
+                    <button
+                        type="button"
+                        onClick={() => handleSaveToFirebase(configLevels)}
+                        className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2.5 px-6 rounded-xl transition-all shadow-md text-sm cursor-pointer border-0 flex items-center gap-2"
+                    >
+                        <i className="fas fa-save"></i> Guardar Configuración de Mesas
+                    </button>
+                </div>
+            </div>
+
             {globalSede === "Leandro N. Alem" && (
                 <>
                     <div className="bg-white p-6 rounded-3xl shadow-sm border border-stone-100 lg:col-span-2">

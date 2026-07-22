@@ -120,11 +120,10 @@ const LoginSedeModal = ({
                                 </span>
                                 <input 
                                     type="password"
-                                    placeholder="Escribe tu contraseña"
+                                    placeholder="Contraseña (alumnos: dejar vacío)"
                                     value={authPassword}
                                     onChange={(e) => setAuthPassword(e.target.value)}
                                     className="w-full pl-11 pr-4 py-3 rounded-xl border border-stone-200 outline-none bg-stone-50/50 font-semibold focus:ring-2 focus:ring-orange-500 transition-all text-stone-800"
-                                    required
                                 />
                             </div>
                         </div>

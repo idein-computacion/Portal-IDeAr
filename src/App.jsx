@@ -11,6 +11,8 @@ import CertificadoAnaliticoPreview from './components/CertificadoAnaliticoPrevie
 import PublicReceipt from './components/PublicReceipt';
 
 import LoginSedeModal from './components/auth/LoginSedeModal';
+import StudentDashboard from './components/StudentDashboard';
+
 import StudentHistorialModal from './components/modals/StudentHistorialModal';
 import BoletinModal from './components/modals/BoletinModal';
 import ReceiptModal from './components/modals/ReceiptModal';
@@ -175,8 +177,8 @@ function App() {
         const username = authDni.trim().toLowerCase();
         const pwd = authPassword;
 
-        if (!username || !pwd) {
-            addNotification("Por favor, completa todos los campos", "error");
+        if (!username) {
+            addNotification("Por favor, ingresa tu DNI o usuario", "error");
             return;
         }
 
@@ -191,6 +193,10 @@ function App() {
         if (isAlemAdminSetup) {
             if (!authNombre.trim()) {
                 addNotification("Por favor, completa tu Nombre Completo", "error");
+                return;
+            }
+            if (!pwd) {
+                addNotification("Define una contraseña para el administrador", "error");
                 return;
             }
             const adminUser = {
@@ -219,10 +225,16 @@ function App() {
         }
 
         try {
+            // 1. Primero intentar login como usuario de staff (profesor/director)
             const userRef = ref(rtdb, `usuarios/${username}`);
             const snapshot = await get(userRef);
 
             if (snapshot.exists()) {
+                // Es un usuario de staff — requiere contraseña
+                if (!pwd) {
+                    addNotification("Los profesores y directores deben ingresar su contraseña", "error");
+                    return;
+                }
                 const userData = snapshot.val();
                 if (userData.password === pwd) {
                     const userSedes = userData.sede ? userData.sede.split(',').map(s => s.trim()) : [];
@@ -243,9 +255,46 @@ function App() {
                 } else {
                     addNotification("Contraseña incorrecta", "error");
                 }
-            } else {
-                addNotification("Usuario no registrado", "error");
+                return;
             }
+
+            // 2. No es usuario de staff — buscar en alumnos por DNI + sede
+            const alumnosRef = ref(rtdb, 'alumnos');
+            const alumnosSnap = await get(alumnosRef);
+            if (alumnosSnap.exists()) {
+                const alumnosData = alumnosSnap.val();
+                const foundAlumno = Object.values(alumnosData).find(
+                    a => a.dni === username && a.sede === tempSede && a.active !== false
+                );
+                if (foundAlumno) {
+                    // Alumno encontrado en la sede seleccionada — acceso con contraseña vacía por ahora
+                    const alumnoUser = {
+                        ...foundAlumno,
+                        rol: 'Alumno',
+                        nombre: foundAlumno.name,
+                    };
+                    addNotification(`¡Bienvenido/a, ${foundAlumno.name}!`, "success");
+                    localStorage.setItem('idear_sede', tempSede);
+                    localStorage.setItem('idear_user', JSON.stringify(alumnoUser));
+                    setGlobalSede(tempSede);
+                    setCurrentUser(alumnoUser);
+                    setTempSede(null);
+                    setAuthDni("");
+                    setAuthPassword("");
+                    setAuthNombre("");
+                    return;
+                }
+                // Buscar en otras sedes (alumno activo con ese DNI)
+                const alumnoOtraSede = Object.values(alumnosData).find(
+                    a => a.dni === username && a.active !== false
+                );
+                if (alumnoOtraSede) {
+                    addNotification(`Tu DNI está registrado en la sede "${alumnoOtraSede.sede}", no en "${tempSede}".`, "error");
+                    return;
+                }
+            }
+
+            addNotification("DNI no registrado. Verificá la sede seleccionada o contactá a Dirección.", "error");
         } catch (err) {
             console.error("Error al autenticar:", err);
             addNotification("Error de conexión al autenticar", "error");
@@ -1415,6 +1464,71 @@ function App() {
                     <i className="fas fa-spinner fa-spin text-2xl text-amber-500"></i> Cargando Sede...
                 </div>
             </div>
+        );
+    }
+
+    if (currentUser?.rol === 'Alumno') {
+        return (
+            <>
+                <div className="fixed top-4 right-4 z-[9999] flex flex-col gap-2 no-print">
+                    {notifications.map(n => (
+                        <div key={n.id} className={`p-4 rounded-xl shadow-lg border text-sm flex items-center gap-3 transition-all transform translate-y-0 duration-300 ${
+                            n.type === 'success' ? 'bg-emerald-50 border-emerald-200 text-emerald-800' :
+                            n.type === 'error' ? 'bg-rose-50 border-rose-200 text-rose-800' : 'bg-blue-50 border-blue-200 text-blue-800'
+                        }`}>
+                            <i className={`fas ${n.type === 'success' ? 'fa-check-circle' : n.type === 'error' ? 'fa-exclamation-circle' : 'fa-info-circle'}`}></i>
+                            <span>{n.text}</span>
+                        </div>
+                    ))}
+                </div>
+                <StudentDashboard
+                    currentUser={currentUser}
+                    students={students}
+                    payments={payments}
+                    attendance={attendance}
+                    grades={grades}
+                    gradeColumns={gradeColumns}
+                    mesasGrades={mesasGrades}
+                    mesasColumns={mesasColumns}
+                    configLevels={configLevels}
+                    announcements={announcements}
+                    generalConfig={generalConfig}
+                    globalSede={globalSede}
+                    sedes={sedes}
+                    NIVELES={NIVELES}
+                    addNotification={addNotification}
+                    handleLogout={handleLogout}
+                    setBoletinStudent={setBoletinStudent}
+                    setShowBoletin={setShowBoletin}
+                    setActiveReceipt={setActiveReceipt}
+                />
+                {showBoletin && boletinStudent && (
+                    <BoletinModal
+                        student={boletinStudent}
+                        sedeObj={sedes.find(s => s.nombre === globalSede)}
+                        grades={grades}
+                        gradeColumns={gradeColumns[boletinStudent.level] || []}
+                        mesasGrades={mesasGrades}
+                        mesasColumns={mesasColumns}
+                        attendance={attendance}
+                        profesorName={generalConfig?.profesor || ''}
+                        onClose={() => { setShowBoletin(false); setBoletinStudent(null); }}
+                    />
+                )}
+                {activeReceipt && (
+                    <ReceiptModal
+                        activeReceipt={activeReceipt}
+                        configLevels={configLevels}
+                        students={students}
+                        globalSede={globalSede}
+                        generalConfig={generalConfig}
+                        onClose={() => setActiveReceipt(null)}
+                        isSendingEmail={isSendingEmail}
+                        setIsSendingEmail={setIsSendingEmail}
+                        addNotification={addNotification}
+                    />
+                )}
+            </>
         );
     }
 

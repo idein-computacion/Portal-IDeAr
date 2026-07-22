@@ -314,6 +314,11 @@ const GradesTab = ({
                                                                         Promovido a {student.level}
                                                                     </span>
                                                                 )}
+                                                                {mesasGrades.find(g => g.id === `inscripcion_${student.id}_${safeLevel}`) && (
+                                                                    <span className="text-[8px] text-white font-black bg-emerald-500 px-1.5 py-0.5 rounded-full normal-case shadow-sm flex items-center gap-0.5">
+                                                                        <i className="fas fa-check text-[6px]"></i> Inscripto
+                                                                    </span>
+                                                                )}
                                                             </div>
                                                             <div className="flex items-center gap-1 mt-0.5">
                                                                 <span className="text-[9px] text-stone-400">DNI {student.dni || '-'}</span>
