@@ -21,6 +21,9 @@ function calcDebt(student, payments, configLevels) {
     const studentPayments = payments.filter(p => p.studentId === student.id && p.period !== 'Examen');
     const totalPaid = studentPayments.reduce((sum, p) => sum + p.amount, 0);
     let totalExpected = 0;
+    let currentCuota = 0;
+    let nextPaymentMonth = "";
+    
     for (let year = startYear; year <= currentYear; year++) {
         const monthStart = (year === startYear) ? startMonthIdx : 2;
         let monthEnd = (year < currentYear) ? 11 : currentMonthIdx;
@@ -39,10 +42,22 @@ function calcDebt(student, payments, configLevels) {
             const hist = getHistoricalValues(levelConfig, i, year);
             const mInsc = student.inscripcionOverride !== undefined && student.inscripcionOverride !== '' ? Number(student.inscripcionOverride) : hist.inscripcion;
             const mCuota = student.cuotaOverride !== undefined && student.cuotaOverride !== '' ? Number(student.cuotaOverride) : hist.cuota;
-            totalExpected += (year === startYear && i === monthStart) ? (mInsc + mCuota) : mCuota;
+            
+            const expectedForMonth = (year === startYear && i === monthStart) ? (mInsc + mCuota) : mCuota;
+            totalExpected += expectedForMonth;
+            currentCuota = mCuota;
+            
+            if (totalExpected > totalPaid && !nextPaymentMonth) {
+                nextPaymentMonth = MONTHS_ES[i];
+            }
         }
     }
-    return { totalPaid, totalExpected, debt: Math.max(0, totalExpected - totalPaid) };
+    
+    if (!nextPaymentMonth) {
+        nextPaymentMonth = MONTHS_ES[(currentMonthIdx + 1) % 12];
+    }
+    
+    return { totalPaid, totalExpected, debt: Math.max(0, totalExpected - totalPaid), currentCuota, nextPaymentMonth };
 }
 
 /* ─────────────────────────────── section button component ─── */
@@ -103,7 +118,13 @@ export default function StudentDashboard({
     const [activeSection, setActiveSection] = useState('ficha');
     const [editMode, setEditMode] = useState(false);
     const [saving, setSaving] = useState(false);
-    const [form, setForm] = useState({ phone: student.phone || '', email: student.email || '', address: student.address || '' });
+    const [form, setForm] = useState({
+        name: student.name || '',
+        phone: student.phone || '',
+        email: student.email || '',
+        address: student.address || '',
+        tutor: student.tutor || '',
+    });
 
     // Exam inscription
     const safeLevel = (student.level || student.taller || '').replace(/[.#$[\]/]/g, '_');
@@ -122,7 +143,7 @@ export default function StudentDashboard({
     }, [generalConfig]);
 
     // Finance
-    const { totalPaid, totalExpected, debt } = useMemo(() => calcDebt(student, payments, configLevels), [student, payments, configLevels]);
+    const { totalPaid, totalExpected, debt, currentCuota, nextPaymentMonth } = useMemo(() => calcDebt(student, payments, configLevels), [student, payments, configLevels]);
     const myPayments = useMemo(() => payments.filter(p => p.studentId === student.id).sort((a, b) => b.date.localeCompare(a.date)), [payments, student.id]);
 
     // Attendance
@@ -152,12 +173,18 @@ export default function StudentDashboard({
 
     async function handleSaveProfile(e) {
         e.preventDefault();
+        if (!form.name.trim()) {
+            addNotification('El nombre no puede estar vacío', 'error');
+            return;
+        }
         setSaving(true);
         try {
             await update(ref(rtdb, `alumnos/${student.id}`), {
-                phone: form.phone,
-                email: form.email,
-                address: form.address,
+                name: form.name.trim(),
+                phone: form.phone.trim(),
+                email: form.email.trim(),
+                address: form.address.trim(),
+                tutor: form.tutor.trim(),
                 updatedAt: Date.now(),
             });
             addNotification('¡Datos actualizados correctamente!', 'success');
@@ -295,7 +322,13 @@ export default function StudentDashboard({
                             <button
                                 onClick={() => {
                                     if (!editMode) {
-                                        setForm({ phone: student.phone || '', email: student.email || '', address: student.address || '' });
+                                        setForm({
+                                            name: student.name || '',
+                                            phone: student.phone || '',
+                                            email: student.email || '',
+                                            address: student.address || '',
+                                            tutor: student.tutor || '',
+                                        });
                                     }
                                     setEditMode(!editMode);
                                 }}
@@ -306,45 +339,61 @@ export default function StudentDashboard({
                             </button>
                         </div>
 
+                        <div className="bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3 mb-4 flex items-start gap-3">
+                            <i className="fas fa-info-circle text-amber-500 mt-0.5 flex-shrink-0"></i>
+                            <div>
+                                <p className="text-xs font-bold text-amber-700 uppercase tracking-wide">Datos de Contacto Editables</p>
+                                <p className="text-[11px] text-amber-600 mt-0.5">Sede, nivel y fecha de inscripción solo pueden modificarse desde el panel administrativo.</p>
+                            </div>
+                        </div>
+
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
                             {[
-                                { icon: 'fa-user', label: 'Nombre Completo', value: student.name },
+                                { icon: 'fa-user', label: 'Nombre Completo', value: editMode ? form.name : student.name, editable: true },
                                 { icon: 'fa-id-card', label: 'DNI', value: student.dni },
                                 { icon: 'fa-school', label: 'Sede', value: student.sede },
                                 { icon: 'fa-layer-group', label: 'Nivel / Curso', value: myLevel || '-' },
                                 { icon: 'fa-calendar-alt', label: 'Fecha de Inscripción', value: student.fecha_inicio || '-' },
-                                { icon: 'fa-user-tie', label: 'Tutor Responsable', value: student.tutor || '-' },
+                                { icon: 'fa-user-tie', label: 'Tutor Responsable', value: editMode ? form.tutor : (student.tutor || '-'), editable: true },
                             ].map(f => (
-                                <div key={f.label} className="bg-stone-50 rounded-2xl p-4 border border-stone-100">
+                                <div key={f.label} className={`rounded-2xl p-4 border transition-colors ${editMode ? (f.editable ? 'bg-white border-stone-200 shadow-sm' : 'bg-stone-100 border-stone-100') : 'bg-stone-50 border-stone-100'}`}>
                                     <p className="text-[10px] font-bold text-stone-400 uppercase tracking-wider mb-1">
                                         <i className={`fas ${f.icon} mr-1`}></i>{f.label}
                                     </p>
-                                    <p className="font-bold text-stone-800">{f.value}</p>
+                                    {editMode && f.editable ? (
+                                        <input
+                                            type="text"
+                                            value={f.label === 'Nombre Completo' ? form.name : form.tutor}
+                                            onChange={e => setForm(p => ({ ...p, [f.label === 'Nombre Completo' ? 'name' : 'tutor']: e.target.value }))}
+                                            className="w-full font-bold text-stone-800 bg-transparent border-none outline-none"
+                                        />
+                                    ) : (
+                                        <p className="font-bold text-stone-800">{f.value}</p>
+                                    )}
                                 </div>
                             ))}
                         </div>
 
                         {editMode ? (
                             <form onSubmit={handleSaveProfile} className="space-y-4">
-                                <div className="border-t border-stone-100 pt-4">
-                                    <p className="text-xs font-bold text-stone-500 uppercase tracking-wider mb-4">Datos Editables</p>
+                                <div className="border-t border-orange-100 pt-4">
                                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                         <div>
                                             <label className="block text-xs font-bold text-stone-500 uppercase mb-2">Teléfono</label>
                                             <input type="tel" value={form.phone} onChange={e => setForm(p => ({ ...p, phone: e.target.value }))}
-                                                className="w-full p-3 rounded-xl border border-stone-200 outline-none bg-stone-50 font-semibold focus:ring-2 focus:ring-orange-400 transition-all"
+                                                className="w-full p-3 rounded-xl border border-stone-200 outline-none bg-white font-semibold focus:ring-2 focus:ring-orange-400 transition-all shadow-sm"
                                                 placeholder="Ej. 3754 123456" />
                                         </div>
                                         <div>
                                             <label className="block text-xs font-bold text-stone-500 uppercase mb-2">Email</label>
                                             <input type="email" value={form.email} onChange={e => setForm(p => ({ ...p, email: e.target.value }))}
-                                                className="w-full p-3 rounded-xl border border-stone-200 outline-none bg-stone-50 font-semibold focus:ring-2 focus:ring-orange-400 transition-all"
+                                                className="w-full p-3 rounded-xl border border-stone-200 outline-none bg-white font-semibold focus:ring-2 focus:ring-orange-400 transition-all shadow-sm"
                                                 placeholder="tucorreo@email.com" />
                                         </div>
                                         <div className="sm:col-span-2">
                                             <label className="block text-xs font-bold text-stone-500 uppercase mb-2">Domicilio</label>
                                             <input type="text" value={form.address} onChange={e => setForm(p => ({ ...p, address: e.target.value }))}
-                                                className="w-full p-3 rounded-xl border border-stone-200 outline-none bg-stone-50 font-semibold focus:ring-2 focus:ring-orange-400 transition-all"
+                                                className="w-full p-3 rounded-xl border border-stone-200 outline-none bg-white font-semibold focus:ring-2 focus:ring-orange-400 transition-all shadow-sm"
                                                 placeholder="Calle, número, barrio..." />
                                         </div>
                                     </div>
@@ -370,6 +419,12 @@ export default function StudentDashboard({
                                     </div>
                                 ))}
                             </div>
+                        )}
+                        {!editMode && (
+                            <p className="text-[10px] text-stone-400 mt-3 flex items-center gap-1">
+                                <i className="fas fa-info-circle"></i>
+                                Podés editar tu nombre, tutor y datos de contacto usando el botón "Editar Datos".
+                            </p>
                         )}
                     </div>
                 )}
@@ -600,16 +655,16 @@ export default function StudentDashboard({
                             <p className="text-white/70 text-xs font-bold uppercase tracking-widest mb-1">Estado Financiero</p>
                             <div className="grid grid-cols-3 gap-4 mt-4">
                                 <div className="text-white text-center">
-                                    <p className="text-[10px] uppercase opacity-70">Pagado</p>
-                                    <p className="text-xl font-black">${totalPaid.toLocaleString('es-AR')}</p>
+                                    <p className="text-[10px] uppercase opacity-70">Valor de Cuota</p>
+                                    <p className="text-xl font-black">${(currentCuota || 0).toLocaleString('es-AR')}</p>
                                 </div>
                                 <div className="text-white text-center border-x border-white/20">
-                                    <p className="text-[10px] uppercase opacity-70">Esperado</p>
-                                    <p className="text-xl font-black">${totalExpected.toLocaleString('es-AR')}</p>
+                                    <p className="text-[10px] uppercase opacity-70">Deuda o Saldo</p>
+                                    <p className="text-xl font-black">${debt.toLocaleString('es-AR')}</p>
                                 </div>
                                 <div className="text-white text-center">
-                                    <p className="text-[10px] uppercase opacity-70">{debt > 0 ? 'Deuda' : 'Estado'}</p>
-                                    <p className="text-xl font-black">{debt > 0 ? `$${debt.toLocaleString('es-AR')}` : '✓ Al día'}</p>
+                                    <p className="text-[10px] uppercase opacity-70">Próximo Pago</p>
+                                    <p className="text-xl font-black">{nextPaymentMonth}</p>
                                 </div>
                             </div>
                         </div>
