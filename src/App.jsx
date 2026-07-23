@@ -1660,6 +1660,7 @@ function App() {
                 {currentTab === "dashboard" && (
                     <DashboardTab
                         currentUser={currentUser}
+                        profileUser={currentUser?.dni === 'admin' ? sedeProfesor : currentUser}
                         isDirector={isDirector}
                         unreadAnnouncementsCount={unreadAnnouncementsCount}
                         stats={stats}

@@ -1,17 +1,29 @@
-const CACHE_NAME = 'idear-pwa-v3';
+const CACHE_NAME = 'idear-pwa-v4';
 
 self.addEventListener('install', event => {
   self.skipWaiting();
 });
 
 self.addEventListener('activate', event => {
-  event.waitUntil(clients.claim());
+  event.waitUntil(
+    caches.keys().then(cacheNames => {
+      return Promise.all(
+        cacheNames.map(cache => {
+          if (cache !== CACHE_NAME) {
+            console.log('Borrando caché antigua:', cache);
+            return caches.delete(cache);
+          }
+        })
+      );
+    }).then(() => clients.claim())
+  );
 });
 
 self.addEventListener('fetch', event => {
-  // PWA requires a fetch handler, but in dev we just pass through to network
-  // to avoid breaking Vite's dynamic imports and HMR.
-  event.respondWith(fetch(event.request).catch(() => {
-    return caches.match(event.request);
-  }));
+  // Network first strategy
+  event.respondWith(
+    fetch(event.request).catch(() => {
+      return caches.match(event.request);
+    })
+  );
 });

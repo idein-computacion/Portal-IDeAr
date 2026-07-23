@@ -6,6 +6,7 @@ import React from 'react';
  */
 const DashboardTab = ({
     currentUser,
+    profileUser,
     isDirector,
     unreadAnnouncementsCount,
     stats,
@@ -35,8 +36,8 @@ const DashboardTab = ({
                 ></div>
                 <div className="flex flex-col sm:flex-row items-center sm:items-start gap-5 relative z-10">
                     <div className="w-24 h-24 rounded-full bg-white/20 backdrop-blur border-4 border-white/40 overflow-hidden flex items-center justify-center shadow-lg text-white flex-shrink-0">
-                        {currentUser?.profilePic ? (
-                            <img src={currentUser.profilePic} alt="Perfil" className="w-full h-full object-cover" />
+                        {profileUser?.foto ? (
+                            <img src={profileUser.foto} alt="Perfil" className="w-full h-full object-cover" />
                         ) : (
                             <i className="fas fa-user-tie text-3xl drop-shadow-md"></i>
                         )}

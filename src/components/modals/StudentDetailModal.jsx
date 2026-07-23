@@ -61,8 +61,8 @@ const StudentDetailModal = ({
                         backgroundSize: '80px 80px'
                     }}></div>
                     
-                    <div className="absolute -left-8 -top-8 opacity-20 pointer-events-none">
-                        <img src="/logo.png" alt="IDeAr" className="w-40 h-40 object-contain drop-shadow-xl filter grayscale contrast-200 brightness-200" />
+                    <div className="absolute right-8 bottom-0 opacity-40 pointer-events-none translate-y-4 mix-blend-screen">
+                        <img src="/logo.png" alt="IDeAr" className="w-48 h-48 object-contain drop-shadow-2xl" />
                     </div>
 
                     <div className="relative z-10 flex flex-col sm:flex-row items-center sm:items-start gap-4">

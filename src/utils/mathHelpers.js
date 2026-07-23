@@ -1,8 +1,8 @@
 export const getHistoricalValues = (levelConfig, monthIdx, year) => {
     if (!levelConfig || !levelConfig.historial || levelConfig.historial.length === 0) {
         return { 
-            cuota: levelConfig?.cuota || 25000, 
-            inscripcion: levelConfig?.inscripcion || 20000 
+            cuota: levelConfig?.cuota !== undefined && levelConfig.cuota !== "" ? Number(levelConfig.cuota) : 0, 
+            inscripcion: levelConfig?.inscripcion !== undefined && levelConfig.inscripcion !== "" ? Number(levelConfig.inscripcion) : 0 
         };
     }
     let validEntry = levelConfig.historial[0];
