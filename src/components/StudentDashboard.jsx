@@ -20,9 +20,13 @@ function calcDebt(student, payments, configLevels) {
     }
     const studentPayments = payments.filter(p => p.studentId === student.id && p.period !== 'Examen');
     const totalPaid = studentPayments.reduce((sum, p) => sum + p.amount, 0);
+    
     let totalExpected = 0;
     let currentCuota = 0;
     let nextPaymentMonth = "";
+    
+    const yearlyBreakdown = [];
+    let remainingTotalPaid = totalPaid;
     
     for (let year = startYear; year <= currentYear; year++) {
         const monthStart = (year === startYear) ? startMonthIdx : 2;
@@ -36,6 +40,12 @@ function calcDebt(student, payments, configLevels) {
                 if (bYear === year) monthEnd = Math.min(monthEnd, bMonth);
             }
         }
+        
+        const yearMonths = [];
+        const yearMissingMonths = [];
+        let yearExpectedCost = 0;
+        let yearAllocatedPaid = 0;
+        
         for (let i = monthStart; i <= monthEnd; i++) {
             if (isMonthInactive(year, i, student.historial_bajas)) continue;
             const levelConfig = configLevels.find(c => c.curso_nivel === student.level) || configLevels.find(c => c.curso_nivel === student.taller);
@@ -45,11 +55,39 @@ function calcDebt(student, payments, configLevels) {
             
             const expectedForMonth = (year === startYear && i === monthStart) ? (mInsc + mCuota) : mCuota;
             totalExpected += expectedForMonth;
+            yearExpectedCost += expectedForMonth;
             currentCuota = mCuota;
+            
+            const monthName = MONTHS_ES[i];
+            yearMonths.push(monthName);
+            
+            if (remainingTotalPaid >= expectedForMonth) {
+                yearAllocatedPaid += expectedForMonth;
+                remainingTotalPaid -= expectedForMonth;
+            } else {
+                if (remainingTotalPaid > 0) {
+                    yearAllocatedPaid += remainingTotalPaid;
+                    remainingTotalPaid = 0;
+                }
+                yearMissingMonths.push(monthName);
+            }
             
             if (totalExpected > totalPaid && !nextPaymentMonth) {
                 nextPaymentMonth = MONTHS_ES[i];
             }
+        }
+        
+        if (yearMonths.length > 0) {
+            yearlyBreakdown.push({
+                year,
+                months: yearMonths,
+                missingMonths: yearMissingMonths,
+                totalExpected: yearExpectedCost,
+                totalPaid: yearAllocatedPaid,
+                debt: Math.max(0, yearExpectedCost - yearAllocatedPaid),
+                monthCount: yearMonths.length,
+                includesInscripcion: (year === startYear)
+            });
         }
     }
     
@@ -57,7 +95,7 @@ function calcDebt(student, payments, configLevels) {
         nextPaymentMonth = MONTHS_ES[(currentMonthIdx + 1) % 12];
     }
     
-    return { totalPaid, totalExpected, debt: Math.max(0, totalExpected - totalPaid), currentCuota, nextPaymentMonth };
+    return { totalPaid, totalExpected, debt: Math.max(0, totalExpected - totalPaid), currentCuota, nextPaymentMonth, yearlyBreakdown };
 }
 
 /* ─────────────────────────────── section button component ─── */
@@ -115,7 +153,7 @@ export default function StudentDashboard({
             || currentUser;
     }, [students, currentUser, globalSede]);
 
-    const [activeSection, setActiveSection] = useState('ficha');
+    const [activeSection, setActiveSection] = useState('mensajes');
     const [editMode, setEditMode] = useState(false);
     const [saving, setSaving] = useState(false);
     const [form, setForm] = useState({
@@ -124,6 +162,7 @@ export default function StudentDashboard({
         email: student.email || '',
         address: student.address || '',
         tutor: student.tutor || '',
+        profilePic: student.profilePic || '',
     });
 
     // Exam inscription
@@ -143,7 +182,7 @@ export default function StudentDashboard({
     }, [generalConfig]);
 
     // Finance
-    const { totalPaid, totalExpected, debt, currentCuota, nextPaymentMonth } = useMemo(() => calcDebt(student, payments, configLevels), [student, payments, configLevels]);
+    const { totalPaid, totalExpected, debt, currentCuota, nextPaymentMonth, yearlyBreakdown } = useMemo(() => calcDebt(student, payments, configLevels), [student, payments, configLevels]);
     const myPayments = useMemo(() => payments.filter(p => p.studentId === student.id).sort((a, b) => b.date.localeCompare(a.date)), [payments, student.id]);
 
     // Attendance
@@ -171,6 +210,44 @@ export default function StudentDashboard({
     const sedeObj = sedes.find(s => s.nombre === globalSede);
     const profesorName = generalConfig?.profesor || '';
 
+    const handleImageUpload = (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = (event) => {
+            const img = new Image();
+            img.onload = () => {
+                const canvas = document.createElement('canvas');
+                const MAX_WIDTH = 250;
+                const MAX_HEIGHT = 250;
+                let width = img.width;
+                let height = img.height;
+
+                if (width > height) {
+                    if (width > MAX_WIDTH) {
+                        height = Math.round((height * MAX_WIDTH) / width);
+                        width = MAX_WIDTH;
+                    }
+                } else {
+                    if (height > MAX_HEIGHT) {
+                        width = Math.round((width * MAX_HEIGHT) / height);
+                        height = MAX_HEIGHT;
+                    }
+                }
+
+                canvas.width = width;
+                canvas.height = height;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0, width, height);
+                const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+                setForm(p => ({ ...p, profilePic: dataUrl }));
+            };
+            img.src = event.target.result;
+        };
+        reader.readAsDataURL(file);
+    };
+
     async function handleSaveProfile(e) {
         e.preventDefault();
         if (!form.name.trim()) {
@@ -185,6 +262,7 @@ export default function StudentDashboard({
                 email: form.email.trim(),
                 address: form.address.trim(),
                 tutor: form.tutor.trim(),
+                profilePic: form.profilePic,
                 updatedAt: Date.now(),
             });
             addNotification('¡Datos actualizados correctamente!', 'success');
@@ -259,33 +337,42 @@ export default function StudentDashboard({
 
             {/* ─── Hero card ─── */}
             <div className="max-w-5xl mx-auto px-4 pt-8 pb-4">
-                <div className="relative bg-gradient-to-br from-amber-500 via-orange-500 to-rose-500 rounded-3xl p-6 sm:p-8 shadow-2xl overflow-hidden">
-                    <div className="absolute inset-0 opacity-10">
-                        <img src="/logo.png" alt="" className="absolute right-0 bottom-0 w-48 h-48 object-contain translate-x-6 translate-y-6" />
+                <div className="relative bg-gradient-to-r from-black via-orange-600 to-yellow-500 rounded-3xl overflow-hidden p-6 sm:p-8 shadow-2xl text-white">
+                    {/* Guardapampa Pattern */}
+                    <div className="absolute inset-0 z-0 opacity-100 mix-blend-overlay pointer-events-none" style={{ 
+                        backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='80' height='80' viewBox='0 0 80 80'%3E%3Cpath fill='rgba(255,255,255,0.1)' d='M35,15h10v5h5v5h5v10h10v10h-10v10h-5v5h-5v5h-10v-5h-5v-5h-5v-10h-10v-10h10v-10h5v-5h5v-5z M35,30v5h-5v10h5v5h10v-5h5v-10h-5v-5h-10z M-5,-10h10v5h5v10h-5v5h-10v-5h-5v-10h5v-5z M75,-10h10v5h5v10h-5v5h-10v-5h-5v-10h5v-5z M-5,70h10v5h5v10h-5v5h-10v-5h-5v-10h5v-5z M75,70h10v5h5v10h-5v5h-10v-5h-5v-10h5v-5z'/%3E%3C/svg%3E")`,
+                        backgroundSize: '80px 80px'
+                    }}></div>
+                    
+                    {/* Watermark Logo */}
+                    <div className="absolute -left-8 -top-8 opacity-20 pointer-events-none">
+                        <img src="/logo.png" alt="" className="w-40 h-40 object-contain drop-shadow-xl filter grayscale contrast-200 brightness-200" />
                     </div>
-                    <div className="relative z-10 flex flex-col sm:flex-row items-start sm:items-center gap-4">
-                        <div className="w-16 h-16 rounded-2xl bg-white/20 backdrop-blur flex items-center justify-center flex-shrink-0 shadow-inner">
-                            <i className="fas fa-user-graduate text-white text-3xl"></i>
+
+                    <div className="relative z-10 flex flex-col sm:flex-row items-center sm:items-start gap-5">
+                        <div className="w-24 h-24 rounded-full bg-white/20 backdrop-blur border-4 border-white/40 overflow-hidden flex items-center justify-center shadow-lg text-white flex-shrink-0">
+                            {student.profilePic ? (
+                                <img src={student.profilePic} alt="Perfil" className="w-full h-full object-cover" />
+                            ) : (
+                                <span className="text-3xl font-bold">{student.name.charAt(0)}</span>
+                            )}
                         </div>
-                        <div className="min-w-0 flex-1">
-                            <p className="text-white/80 text-xs font-bold uppercase tracking-widest">Bienvenido/a</p>
-                            <h2 className="text-white text-xl sm:text-2xl font-black tracking-tight truncate">{student.name}</h2>
-                            <div className="flex flex-wrap gap-2 mt-2">
-                                <span className="bg-white/20 text-white text-xs px-2.5 py-1 rounded-full font-semibold backdrop-blur">
+                        
+                        <div className="min-w-0 flex-1 text-center sm:text-left">
+                            <h2 className="text-white text-xl sm:text-2xl font-black tracking-tight drop-shadow-md mb-1">¡Nos alegra tenerte aquí!</h2>
+                            <p className="text-orange-100 text-sm max-w-2xl drop-shadow-md font-medium mb-3">
+                                Bienvenido al Portal del Estudiante de IDeAr. Desde este espacio podrás seguir tu recorrido académico, consultar información importante y acceder a todo lo que necesitas para tus estudios.
+                            </p>
+                            <div className="flex flex-wrap gap-2 justify-center sm:justify-start">
+                                <span className="bg-black/30 text-white text-xs px-2.5 py-1 rounded-full font-semibold backdrop-blur drop-shadow-sm border border-white/10">
                                     <i className="fas fa-school mr-1"></i>{globalSede}
                                 </span>
-                                <span className="bg-white/20 text-white text-xs px-2.5 py-1 rounded-full font-semibold backdrop-blur">
+                                <span className="bg-black/30 text-white text-xs px-2.5 py-1 rounded-full font-semibold backdrop-blur drop-shadow-sm border border-white/10">
                                     <i className="fas fa-layer-group mr-1"></i>{myLevel || 'Sin nivel asignado'}
                                 </span>
-                                <span className="bg-white/20 text-white text-xs px-2.5 py-1 rounded-full font-semibold backdrop-blur">
+                                <span className="bg-black/30 text-white text-xs px-2.5 py-1 rounded-full font-semibold backdrop-blur drop-shadow-sm border border-white/10">
                                     <i className="fas fa-id-card mr-1"></i>DNI {student.dni}
                                 </span>
-                            </div>
-                        </div>
-                        <div className="flex flex-col items-end gap-1 flex-shrink-0">
-                            <div className={`text-white text-right px-4 py-2 rounded-2xl font-bold shadow-inner backdrop-blur ${debt > 0 ? 'bg-rose-700/60' : 'bg-emerald-600/60'}`}>
-                                <p className="text-[10px] uppercase tracking-wider opacity-80">{debt > 0 ? 'Deuda pendiente' : 'Al día ✓'}</p>
-                                <p className="text-lg font-black">{debt > 0 ? `$${debt.toLocaleString('es-AR')}` : 'Sin deuda'}</p>
                             </div>
                         </div>
                     </div>
@@ -328,6 +415,7 @@ export default function StudentDashboard({
                                             email: student.email || '',
                                             address: student.address || '',
                                             tutor: student.tutor || '',
+                                            profilePic: student.profilePic || '',
                                         });
                                     }
                                     setEditMode(!editMode);
@@ -377,6 +465,22 @@ export default function StudentDashboard({
                         {editMode ? (
                             <form onSubmit={handleSaveProfile} className="space-y-4">
                                 <div className="border-t border-orange-100 pt-4">
+                                    <div className="mb-4">
+                                        <label className="block text-xs font-bold text-stone-500 uppercase mb-2">Foto de Perfil</label>
+                                        <div className="flex items-center gap-4">
+                                            <div className="w-16 h-16 rounded-2xl bg-stone-100 border border-stone-200 overflow-hidden flex items-center justify-center flex-shrink-0">
+                                                {form.profilePic ? (
+                                                    <img src={form.profilePic} alt="Previsualización" className="w-full h-full object-cover" />
+                                                ) : (
+                                                    <i className="fas fa-camera text-stone-400 text-xl"></i>
+                                                )}
+                                            </div>
+                                            <div className="flex-1">
+                                                <input type="file" accept="image/*" onChange={handleImageUpload} className="text-sm text-stone-500 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-orange-50 file:text-orange-600 hover:file:bg-orange-100 transition-all" />
+                                                <p className="text-[10px] text-stone-400 mt-1">La imagen se ajustará y comprimirá automáticamente.</p>
+                                            </div>
+                                        </div>
+                                    </div>
                                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                         <div>
                                             <label className="block text-xs font-bold text-stone-500 uppercase mb-2">Teléfono</label>
@@ -495,6 +599,9 @@ export default function StudentDashboard({
                                                         {col.title}
                                                     </th>
                                                 ))}
+                                                <th className="px-4 py-3 text-center text-[10px] font-black uppercase text-stone-800 tracking-wider border-b border-stone-100 bg-stone-100/50">
+                                                    Promedio
+                                                </th>
                                             </tr>
                                         </thead>
                                         <tbody>
@@ -513,6 +620,20 @@ export default function StudentDashboard({
                                                         </td>
                                                     );
                                                 })}
+                                                <td className="px-4 py-4 text-center border-b border-stone-50 bg-stone-50/50">
+                                                    {(() => {
+                                                        const scores = levelColumns.map(col => {
+                                                            const g = myGrades.find(gd => gd.id === `${col.id}_${student.id}`);
+                                                            return g ? parseFloat(g.score) : null;
+                                                        }).filter(s => !isNaN(s) && s !== null);
+                                                        if (scores.length > 0) {
+                                                            const avg = scores.reduce((a, b) => a + b, 0) / scores.length;
+                                                            const colorClass = avg >= 7 ? 'text-emerald-700' : avg >= 4 ? 'text-amber-700' : 'text-rose-700';
+                                                            return <span className={`text-lg font-black ${colorClass}`}>{avg.toFixed(2).replace('.00', '')}</span>;
+                                                        }
+                                                        return <span className="text-lg text-stone-400">—</span>;
+                                                    })()}
+                                                </td>
                                             </tr>
                                         </tbody>
                                     </table>
@@ -538,27 +659,60 @@ export default function StudentDashboard({
                                     }).map(nivel => {
                                         const safeN = nivel.replace(/[.#$[\]/]/g, '_');
                                         return (
-                                            <div key={nivel} className="bg-stone-50 rounded-2xl p-4 border border-stone-100">
-                                                <p className="text-xs font-black text-stone-600 uppercase mb-3">
-                                                    {nivel}
-                                                    {nivel === myLevel && <span className="ml-2 bg-amber-200 text-amber-800 text-[9px] px-1.5 py-0.5 rounded font-black">Actual</span>}
-                                                </p>
-                                                <div className="flex flex-wrap gap-3">
-                                                    {mesasColumns.map(col => {
-                                                        const g = myMesasGrades.find(gd => gd.id === `${col.id}_${student.id}_${safeN}`);
-                                                        const score = g ? g.score : '';
-                                                        const num = parseFloat(score);
-                                                        const colorClass = score === '' ? 'bg-stone-100 text-stone-400'
-                                                            : num >= 7 ? 'bg-emerald-100 text-emerald-800'
-                                                            : num >= 4 ? 'bg-amber-100 text-amber-800'
-                                                            : 'bg-rose-100 text-rose-800';
-                                                        return (
-                                                            <div key={col.id} className={`rounded-xl px-3 py-2 ${colorClass} text-center`}>
-                                                                <p className="text-[9px] font-bold uppercase opacity-70">{col.title}</p>
-                                                                <p className="text-lg font-black">{score || '—'}</p>
-                                                            </div>
-                                                        );
-                                                    })}
+                                            <div key={nivel} className="mb-6">
+                                                <div className="flex items-center justify-between mb-2">
+                                                    <p className="text-xs font-black text-stone-600 uppercase">
+                                                        {nivel}
+                                                        {nivel === myLevel && <span className="ml-2 bg-amber-200 text-amber-800 text-[9px] px-1.5 py-0.5 rounded font-black">Actual</span>}
+                                                    </p>
+                                                </div>
+                                                <div className="overflow-x-auto rounded-2xl border border-stone-100">
+                                                    <table className="w-full text-sm">
+                                                        <thead>
+                                                            <tr className="bg-stone-50">
+                                                                {mesasColumns.map(col => (
+                                                                    <th key={col.id} className="px-4 py-3 text-center text-[10px] font-black uppercase text-stone-500 tracking-wider border-b border-stone-100">
+                                                                        {col.title}
+                                                                    </th>
+                                                                ))}
+                                                                <th className="px-4 py-3 text-center text-[10px] font-black uppercase text-stone-800 tracking-wider border-b border-stone-100 bg-stone-100/50">
+                                                                    Promedio
+                                                                </th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody>
+                                                            <tr>
+                                                                {mesasColumns.map(col => {
+                                                                    const g = myMesasGrades.find(gd => gd.id === `${col.id}_${student.id}_${safeN}`);
+                                                                    const score = g ? g.score : '';
+                                                                    const num = parseFloat(score);
+                                                                    const colorClass = score === '' ? 'text-stone-400'
+                                                                        : num >= 7 ? 'text-emerald-700 font-black'
+                                                                        : num >= 4 ? 'text-amber-700 font-black'
+                                                                        : 'text-rose-700 font-black';
+                                                                    return (
+                                                                        <td key={col.id} className="px-4 py-4 text-center border-b border-stone-50">
+                                                                            <span className={`text-lg ${colorClass}`}>{score || '—'}</span>
+                                                                        </td>
+                                                                    );
+                                                                })}
+                                                                <td className="px-4 py-4 text-center border-b border-stone-50 bg-stone-50/50">
+                                                                    {(() => {
+                                                                        const scores = mesasColumns.map(col => {
+                                                                            const g = myMesasGrades.find(gd => gd.id === `${col.id}_${student.id}_${safeN}`);
+                                                                            return g ? parseFloat(g.score) : null;
+                                                                        }).filter(s => !isNaN(s) && s !== null);
+                                                                        if (scores.length > 0) {
+                                                                            const avg = scores.reduce((a, b) => a + b, 0) / scores.length;
+                                                                            const colorClass = avg >= 7 ? 'text-emerald-700' : avg >= 4 ? 'text-amber-700' : 'text-rose-700';
+                                                                            return <span className={`text-lg font-black ${colorClass}`}>{avg.toFixed(2).replace('.00', '')}</span>;
+                                                                        }
+                                                                        return <span className="text-lg text-stone-400">—</span>;
+                                                                    })()}
+                                                                </td>
+                                                            </tr>
+                                                        </tbody>
+                                                    </table>
                                                 </div>
                                             </div>
                                         );
@@ -650,56 +804,93 @@ export default function StudentDashboard({
                 {/* ─ Finanzas ─ */}
                 {activeSection === 'finanzas' && (
                     <div className="space-y-4 animate-fadeIn">
-                        {/* Summary card */}
-                        <div className={`rounded-3xl shadow-xl p-6 ${debt > 0 ? 'bg-gradient-to-br from-rose-600 to-rose-800' : 'bg-gradient-to-br from-emerald-600 to-emerald-800'}`}>
-                            <p className="text-white/70 text-xs font-bold uppercase tracking-widest mb-1">Estado Financiero</p>
-                            <div className="grid grid-cols-3 gap-4 mt-4">
-                                <div className="text-white text-center">
-                                    <p className="text-[10px] uppercase opacity-70">Valor de Cuota</p>
-                                    <p className="text-xl font-black">${(currentCuota || 0).toLocaleString('es-AR')}</p>
-                                </div>
-                                <div className="text-white text-center border-x border-white/20">
-                                    <p className="text-[10px] uppercase opacity-70">Deuda o Saldo</p>
-                                    <p className="text-xl font-black">${debt.toLocaleString('es-AR')}</p>
-                                </div>
-                                <div className="text-white text-center">
-                                    <p className="text-[10px] uppercase opacity-70">Próximo Pago</p>
-                                    <p className="text-xl font-black">{nextPaymentMonth}</p>
+                        {/* Estado Financiero y Desglose Unificados */}
+                        <div className="bg-white rounded-3xl shadow-xl overflow-hidden">
+                            {/* Summary header */}
+                            <div className={`p-6 ${debt > 0 ? 'bg-gradient-to-br from-rose-600 to-rose-800' : 'bg-gradient-to-br from-emerald-600 to-emerald-800'}`}>
+                                <p className="text-white/70 text-xs font-bold uppercase tracking-widest mb-1">Estado Financiero</p>
+                                <div className="grid grid-cols-3 gap-4 mt-4">
+                                    <div className="text-white text-center">
+                                        <p className="text-[10px] uppercase opacity-70">Valor de Cuota</p>
+                                        <p className="text-xl font-black">${(currentCuota || 0).toLocaleString('es-AR')}</p>
+                                    </div>
+                                    <div className="text-white text-center border-x border-white/20">
+                                        <p className="text-[10px] uppercase opacity-70">Deuda o Saldo</p>
+                                        <p className="text-xl font-black">${debt.toLocaleString('es-AR')}</p>
+                                    </div>
+                                    <div className="text-white text-center">
+                                        <p className="text-[10px] uppercase opacity-70">Próximo Pago</p>
+                                        <p className="text-xl font-black">{nextPaymentMonth}</p>
+                                    </div>
                                 </div>
                             </div>
-                        </div>
 
-                        {/* Payment history */}
-                        <div className="bg-white rounded-3xl shadow-xl p-6">
-                            <h3 className="text-lg font-black text-stone-800 flex items-center gap-2 mb-4">
-                                <i className="fas fa-receipt text-green-500"></i> Historial de Pagos
-                            </h3>
-                            {myPayments.length === 0 ? (
-                                <div className="text-center py-10 text-stone-400">
-                                    <i className="fas fa-receipt text-3xl mb-2 block opacity-20"></i>
-                                    <p className="font-semibold text-sm">No hay pagos registrados</p>
-                                </div>
-                            ) : (
-                                <div className="space-y-2 max-h-96 overflow-y-auto">
-                                    {myPayments.map(p => (
-                                        <div key={p.id} className="flex items-center justify-between bg-stone-50 hover:bg-emerald-50 rounded-2xl px-4 py-3 border border-stone-100 hover:border-emerald-100 transition-all group cursor-pointer"
-                                            onClick={() => setActiveReceipt(p)}>
-                                            <div>
-                                                <p className="font-bold text-stone-800 text-sm">{p.concept || p.period}</p>
-                                                <p className="text-[10px] text-stone-400 font-semibold uppercase">
-                                                    <i className="fas fa-calendar mr-1"></i>{new Date(p.date + 'T00:00:00').toLocaleDateString('es-AR')} · {p.method}
-                                                </p>
+                            {/* Desglose anual */}
+                            {yearlyBreakdown && yearlyBreakdown.length > 0 && (
+                                <div className="p-6">
+                                    <h3 className="text-sm font-black text-stone-800 flex items-center gap-2 mb-4">
+                                        <i className="fas fa-chart-pie text-amber-500"></i> Desglose Detallado
+                                    </h3>
+                                    <div className="space-y-3">
+                                        {yearlyBreakdown.map(yb => (
+                                            <div key={yb.year} className="bg-stone-50 p-4 rounded-2xl border border-stone-100">
+                                                <div className="flex justify-between items-center mb-2">
+                                                    <h5 className="text-sm font-extrabold text-stone-700">
+                                                        <i className="fas fa-calendar-alt mr-1 text-amber-500"></i>
+                                                        Año {yb.year}
+                                                    </h5>
+                                                    <span className={`text-sm font-extrabold ${yb.debt > 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
+                                                        {yb.debt > 0 ? `Debe: $${yb.debt.toLocaleString('es-AR')}` : 'Al día ✓'}
+                                                    </span>
+                                                </div>
+                                                <div className="text-xs text-stone-500 mb-2">
+                                                    {yb.monthCount} cuota{yb.monthCount !== 1 ? 's' : ''} {yb.includesInscripcion ? '+ inscripción ' : ''}· 
+                                                    Total esperado: <span className="font-bold">${yb.totalExpected.toLocaleString('es-AR')}</span>
+                                                    {yb.totalPaid > 0 && (<> · Pagado: <span className="font-bold text-emerald-600">${yb.totalPaid.toLocaleString('es-AR')}</span></>)}
+                                                </div>
+                                                {yb.missingMonths.length > 0 && (
+                                                    <p className="text-xs text-rose-500 font-bold">
+                                                        Meses impagos: {yb.missingMonths.join(', ')}
+                                                    </p>
+                                                )}
                                             </div>
-                                            <div className="text-right">
-                                                <p className="font-black text-emerald-700">${p.amount.toLocaleString('es-AR')}</p>
-                                                <p className="text-[9px] text-stone-400 opacity-0 group-hover:opacity-100 transition-all">
-                                                    <i className="fas fa-eye mr-1"></i>Ver recibo
-                                                </p>
-                                            </div>
-                                        </div>
-                                    ))}
+                                        ))}
+                                    </div>
                                 </div>
                             )}
+
+                            {/* Payment history */}
+                            <div className="p-6 border-t border-stone-100 bg-stone-50/50">
+                                <h3 className="text-sm font-black text-stone-800 flex items-center gap-2 mb-4">
+                                    <i className="fas fa-receipt text-emerald-500"></i> Historial de Pagos
+                                </h3>
+                                {myPayments.length === 0 ? (
+                                    <div className="text-center py-6 text-stone-400">
+                                        <i className="fas fa-receipt text-3xl mb-2 block opacity-20"></i>
+                                        <p className="font-semibold text-xs">No hay pagos registrados</p>
+                                    </div>
+                                ) : (
+                                    <div className="space-y-2 max-h-96 overflow-y-auto pr-2">
+                                        {myPayments.map(p => (
+                                            <div key={p.id} className="flex items-center justify-between bg-white hover:bg-emerald-50 rounded-2xl px-4 py-3 border border-stone-200 hover:border-emerald-200 transition-all group cursor-pointer shadow-sm"
+                                                onClick={() => setActiveReceipt(p)}>
+                                                <div>
+                                                    <p className="font-bold text-stone-800 text-sm">{p.concept || p.period}</p>
+                                                    <p className="text-[10px] text-stone-400 font-semibold uppercase">
+                                                        <i className="fas fa-calendar mr-1"></i>{new Date(p.date + 'T00:00:00').toLocaleDateString('es-AR')} · {p.method}
+                                                    </p>
+                                                </div>
+                                                <div className="text-right">
+                                                    <p className="font-black text-emerald-700">${p.amount.toLocaleString('es-AR')}</p>
+                                                    <p className="text-[9px] text-stone-400 opacity-0 group-hover:opacity-100 transition-all">
+                                                        <i className="fas fa-eye mr-1"></i>Ver recibo
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
                         </div>
                     </div>
                 )}

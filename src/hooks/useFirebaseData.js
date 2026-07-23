@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { ref, onValue, get, set } from 'firebase/database';
 import { rtdb } from '../config/firebase';
-import { SEED_CONFIG } from '../data/seedData';
+import { SEED_CONFIG, SEDES as SEED_SEDES } from '../data/seedData';
 
 /**
  * Custom Hook para gestionar todos los listeners en tiempo real de Firebase.
@@ -54,8 +54,20 @@ export function useFirebaseData(globalSede) {
             if (data) {
                 setSedes(Object.values(data));
             } else {
-                setSedes([]);
+                const list = SEED_SEDES.map((name, idx) => ({ id: `sede-${idx}`, nombre: name }));
+                setSedes(list);
+                
+                const seedObj = {};
+                list.forEach(s => seedObj[s.id] = s);
+                set(sedesRef, seedObj).catch(err => console.error("Error sembrando sedes:", err));
             }
+            if (!globalSede) {
+                setLoading(false);
+            }
+        }, (error) => {
+            console.error("Error cargando sedes:", error);
+            const list = SEED_SEDES.map((name, idx) => ({ id: `sede-${idx}`, nombre: name }));
+            setSedes(list);
             if (!globalSede) {
                 setLoading(false);
             }
@@ -146,6 +158,19 @@ export function useFirebaseData(globalSede) {
                         const alemData = alemSnapshot.val();
                         if (alemData) {
                             const copyData = { ...alemData, info: { profesor: "" } };
+                            
+                            // Vaciar matricula y cuota para la nueva sede (excepto si es Alem)
+                            Object.keys(copyData).forEach(key => {
+                                if (key !== 'info' && typeof copyData[key] === 'object') {
+                                    copyData[key].inscripcion = '';
+                                    copyData[key].cuota = '';
+                                    if (Array.isArray(copyData[key].historial) && copyData[key].historial.length > 0) {
+                                        copyData[key].historial[copyData[key].historial.length - 1].inscripcion = '';
+                                        copyData[key].historial[copyData[key].historial.length - 1].cuota = '';
+                                    }
+                                }
+                            });
+
                             set(configRef, copyData).catch(err => console.error("Error copiando config de Alem:", err));
                             
                             setGeneralConfig({ profesor: "" });
@@ -221,6 +246,9 @@ export function useFirebaseData(globalSede) {
             } else {
                 setGrades([]);
             }
+            setLoading(false);
+        }, (error) => {
+            console.error("Error cargando calificaciones:", error);
             setLoading(false);
         });
         unsubscribes.push(unsubGrades);

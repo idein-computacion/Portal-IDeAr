@@ -321,6 +321,7 @@ function App() {
         const fecha_inicio = formData.get("fecha_inicio");
         const tutor = (formData.get("tutor") || "").trim();
         const address = (formData.get("address") || "").trim();
+        const profilePic = formData.get("profilePic") || (editingStudent ? editingStudent.profilePic : "") || "";
 
         if (!dni || !name || !fecha_inicio) {
             addNotification("DNI, Nombre y Fecha de Inicio son requeridos", "error");
@@ -361,6 +362,7 @@ function App() {
             active: modalActive,
             fecha_baja: modalActive ? null : modalFechaBaja,
             historial_bajas: updatedBajas,
+            profilePic,
             updatedAt: Date.now()
         };
 
@@ -456,8 +458,9 @@ function App() {
         const currentCols = [...(gradeColumns[safeNivel] || [])];
         currentCols.push(newCol);
 
+        const safeSede = globalSede.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\./g, '');
         try {
-            await set(ref(rtdb, `config/gradeColumns/${safeNivel}`), currentCols);
+            await set(ref(rtdb, `config/gradeColumns_${safeSede}/${safeNivel}`), currentCols);
             addNotification("Columna agregada", "success");
         } catch (err) {
             addNotification("Error agregando columna", "error");
@@ -476,7 +479,8 @@ function App() {
             if (window.confirm(`¿Seguro que quieres eliminar "${currentTitle}"?`)) {
                 currentCols = currentCols.filter(c => c.id !== colId);
                 try {
-                    await set(ref(rtdb, `config/gradeColumns/${safeNivel}`), currentCols);
+                    const safeSede = globalSede.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\./g, '');
+                    await set(ref(rtdb, `config/gradeColumns_${safeSede}/${safeNivel}`), currentCols);
                     addNotification("Columna eliminada", "info");
                 } catch (err) {
                     addNotification("Error al eliminar", "error");
@@ -487,7 +491,8 @@ function App() {
             if (idx !== -1) {
                 currentCols[idx].title = newTitle;
                 try {
-                    await set(ref(rtdb, `config/gradeColumns/${safeNivel}`), currentCols);
+                    const safeSede = globalSede.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\./g, '');
+                    await set(ref(rtdb, `config/gradeColumns_${safeSede}/${safeNivel}`), currentCols);
                     addNotification("Columna renombrada", "success");
                 } catch (err) {
                     addNotification("Error al renombrar", "error");
@@ -1526,6 +1531,7 @@ function App() {
                         isSendingEmail={isSendingEmail}
                         setIsSendingEmail={setIsSendingEmail}
                         addNotification={addNotification}
+                        isStudent={true}
                     />
                 )}
             </>
@@ -1822,6 +1828,15 @@ function App() {
                     isSendingEmail={isSendingEmail}
                     handleSendReminder={handleSendReminder}
                     handleDeleteStudent={handleDeleteStudent}
+                    handleUpdateProfilePic={async (base64) => {
+                        try {
+                            await update(ref(rtdb, `alumnos/${selectedStudentDetail.id}`), { profilePic: base64 });
+                            setSelectedStudentDetail(prev => ({ ...prev, profilePic: base64 }));
+                            addNotification("Foto de perfil actualizada", "success");
+                        } catch (e) {
+                            addNotification("Error al guardar foto", "error");
+                        }
+                    }}
                     onOpenBoletin={(student) => {
                         setBoletinStudent(student);
                         setShowBoletin(true);

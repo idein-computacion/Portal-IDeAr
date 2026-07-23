@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 
 /**
  * Modal Crear/Editar Alumno.
@@ -26,22 +26,85 @@ const StudentModal = ({
     setEditingStudent,
     addNotification
 }) => {
+    const [profilePic, setProfilePic] = useState(editingStudent?.profilePic || "");
+
+    const handleImageUpload = (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (event) => {
+            const img = new Image();
+            img.onload = () => {
+                const canvas = document.createElement('canvas');
+                const MAX_WIDTH = 250;
+                const MAX_HEIGHT = 250;
+                let width = img.width;
+                let height = img.height;
+                if (width > height) {
+                    if (width > MAX_WIDTH) { height *= MAX_WIDTH / width; width = MAX_WIDTH; }
+                } else {
+                    if (height > MAX_HEIGHT) { width *= MAX_HEIGHT / height; height = MAX_HEIGHT; }
+                }
+                canvas.width = width;
+                canvas.height = height;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0, width, height);
+                setProfilePic(canvas.toDataURL('image/jpeg', 0.8));
+            };
+            img.src = event.target.result;
+        };
+        reader.readAsDataURL(file);
+    };
+
     return (
         <div className="fixed inset-0 bg-stone-950/40 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fadeIn no-print">
-            <div className="bg-white rounded-3xl shadow-xl w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto">
-                <div className="flex items-center justify-between mb-6">
-                    <h3 className="text-xl font-bold text-stone-800">
-                        {editingStudent ? "Editar Perfil del Alumno" : "Registrar Alumno Nuevo"}
-                    </h3>
-                    <button 
-                        onClick={onClose}
-                        className="p-1 text-stone-400 hover:text-stone-600"
-                    >
-                        <i className="fas fa-times text-lg"></i>
-                    </button>
+            <div className="bg-white rounded-3xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto overflow-x-hidden relative">
+                
+                {/* Header Guardapampa */}
+                <div className="relative bg-[#3e2723] overflow-hidden p-6 text-[#fff8e1]">
+                    <div className="absolute inset-0 opacity-10" style={{ 
+                        backgroundImage: `url("data:image/svg+xml,%3Csvg width='40' height='40' viewBox='0 0 40 40' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M20 0l20 20-20 20L0 20z M20 10l10 10-10 10-10-10z' fill='%23fff8e1' fill-rule='evenodd'/%3E%3C/svg%3E")`,
+                        backgroundSize: '40px 40px'
+                    }}></div>
+                    
+                    <div className="absolute -left-8 -top-8 opacity-20 pointer-events-none">
+                        <img src="/logo.png" alt="IDeAr" className="w-40 h-40 object-contain drop-shadow-xl filter grayscale contrast-200 brightness-200" />
+                    </div>
+
+                    <div className="relative z-10 flex flex-col sm:flex-row items-center sm:items-start gap-4">
+                        <div className="relative group">
+                            <div className="w-24 h-24 rounded-full bg-[#5d4037] border-4 border-[#fff8e1] overflow-hidden flex items-center justify-center shadow-lg">
+                                {profilePic ? (
+                                    <img src={profilePic} alt="Perfil" className="w-full h-full object-cover" />
+                                ) : (
+                                    <i className="fas fa-user text-4xl text-[#fff8e1]/50"></i>
+                                )}
+                            </div>
+                            <label className="absolute bottom-0 right-0 bg-amber-500 hover:bg-amber-600 text-white w-8 h-8 rounded-full flex items-center justify-center cursor-pointer shadow-md transition-all">
+                                <i className="fas fa-camera text-xs"></i>
+                                <input type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
+                            </label>
+                        </div>
+                        
+                        <div className="flex-1 text-center sm:text-left mt-2 sm:mt-0">
+                            <div className="flex items-center justify-between">
+                                <h3 className="text-xl font-black tracking-wide text-white drop-shadow-md">
+                                    {editingStudent ? "Ficha del Alumno" : "Registrar Alumno"}
+                                </h3>
+                                <button onClick={onClose} className="text-[#fff8e1]/70 hover:text-white transition-colors bg-transparent border-0 cursor-pointer">
+                                    <i className="fas fa-times text-xl drop-shadow-md"></i>
+                                </button>
+                            </div>
+                            <p className="text-sm font-semibold opacity-80 uppercase tracking-widest mt-1">
+                                {editingStudent ? editingStudent.name : 'Nuevo Ingreso'}
+                            </p>
+                        </div>
+                    </div>
                 </div>
 
-                <form key={editingStudent ? editingStudent.id : 'new'} onSubmit={handleSaveStudent} className="space-y-4">
+                <div className="p-6">
+                    <form key={editingStudent ? editingStudent.id : 'new'} onSubmit={handleSaveStudent} className="space-y-4">
+                        <input type="hidden" name="profilePic" value={profilePic} />
                     <div>
                         <label className="block text-xs font-bold text-stone-500 uppercase mb-2">Apellido y Nombre</label>
                         <input 
@@ -233,6 +296,7 @@ const StudentModal = ({
                         </button>
                     </div>
                 </form>
+                </div>
             </div>
         </div>
     );

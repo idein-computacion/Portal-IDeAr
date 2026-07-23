@@ -33,11 +33,22 @@ const DashboardTab = ({
                         backgroundSize: '80px 80px'
                     }}
                 ></div>
-                <div className="space-y-2 text-center md:text-left relative z-10">
-                    <h2 className="text-3xl font-extrabold drop-shadow-md">
-                        ¡Hola, {isDirector ? "Administrador" : currentUser?.nombre?.split(' ')[0] || "Profesor"}!
-                    </h2>
-                    <p className="text-orange-100 max-w-md drop-shadow">Bienvenido al centro integral de operaciones del Instituto IDeAr. Aquí tienes un vistazo de hoy.</p>
+                <div className="flex flex-col sm:flex-row items-center sm:items-start gap-5 relative z-10">
+                    <div className="w-24 h-24 rounded-full bg-white/20 backdrop-blur border-4 border-white/40 overflow-hidden flex items-center justify-center shadow-lg text-white flex-shrink-0">
+                        {currentUser?.profilePic ? (
+                            <img src={currentUser.profilePic} alt="Perfil" className="w-full h-full object-cover" />
+                        ) : (
+                            <i className="fas fa-user-tie text-3xl drop-shadow-md"></i>
+                        )}
+                    </div>
+                    <div className="space-y-2 text-center sm:text-left mt-2 sm:mt-0">
+                        <h2 className="text-3xl font-extrabold drop-shadow-md leading-tight">
+                            ¡Bienvenido al Portal Docente del Instituto IDeAr!
+                        </h2>
+                        <p className="text-orange-100 max-w-md drop-shadow text-sm">
+                            Accede de forma rápida a la gestión de tus estudiantes, clases y herramientas académicas. A continuación, encontrarás un resumen de la actividad de hoy.
+                        </p>
+                    </div>
                 </div>
                 <div className="flex items-center gap-6 relative z-10">
                     {unreadAnnouncementsCount > 0 && (

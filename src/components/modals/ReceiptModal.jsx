@@ -16,7 +16,8 @@ const ReceiptModal = ({
     onClose,
     isSendingEmail,
     setIsSendingEmail,
-    addNotification
+    addNotification,
+    isStudent = false
 }) => {
     const [receiptEmailPreview, setReceiptEmailPreview] = useState(null);
     const handlePrintReceipt = () => {
@@ -253,17 +254,19 @@ const ReceiptModal = ({
                         >
                             <i className="fas fa-print"></i> Imprimir (PDF)
                         </button>
-                        <button 
-                            onClick={handleSendEmail}
-                            disabled={isSendingEmail}
-                            className={`flex-1 ${isSendingEmail ? 'bg-rose-400 cursor-not-allowed' : 'bg-rose-600 hover:bg-rose-700'} text-white font-bold py-3 rounded-xl transition-all shadow-md flex items-center justify-center gap-2`}
-                        >
-                            {isSendingEmail ? (
-                                <><i className="fas fa-spinner fa-spin"></i> Enviando...</>
-                            ) : (
-                                <><i className="fas fa-envelope"></i> Enviar Gmail</>
-                            )}
-                        </button>
+                        {!isStudent && (
+                            <button 
+                                onClick={handleSendEmail}
+                                disabled={isSendingEmail}
+                                className={`flex-1 ${isSendingEmail ? 'bg-rose-400 cursor-not-allowed' : 'bg-rose-600 hover:bg-rose-700'} text-white font-bold py-3 rounded-xl transition-all shadow-md flex items-center justify-center gap-2`}
+                            >
+                                {isSendingEmail ? (
+                                    <><i className="fas fa-spinner fa-spin"></i> Enviando...</>
+                                ) : (
+                                    <><i className="fas fa-envelope"></i> Enviar Gmail</>
+                                )}
+                            </button>
+                        )}
                     </div>
                 </div>
             </div>

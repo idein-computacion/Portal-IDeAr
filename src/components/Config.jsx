@@ -166,16 +166,19 @@ function Config({ configLevels, setConfigLevels, addNotification, globalSede, ge
     };
 
     const handleLevelChange = (id, field, value) => {
-        const updated = configLevels.map(lvl => lvl.id === id ? { ...lvl, [field]: Number(value) } : lvl);
+        const parsedValue = value === "" ? "" : Number(value);
+        const updated = configLevels.map(lvl => lvl.id === id ? { ...lvl, [field]: parsedValue } : lvl);
         setConfigLevels(updated);
     };
 
-    const handleAddCourse = (e) => {
+    const handleAddCourse = async (e) => {
         e.preventDefault();
         const formData = new FormData(e.target);
         const newCourseName = formData.get("curso_nivel").trim();
-        const inscripcionVal = Number(formData.get("inscripcion"));
-        const cuotaVal = Number(formData.get("cuota"));
+        const inscripcionInput = formData.get("inscripcion");
+        const cuotaInput = formData.get("cuota");
+        const inscripcionVal = inscripcionInput === "" ? "" : Number(inscripcionInput);
+        const cuotaVal = cuotaInput === "" ? "" : Number(cuotaInput);
 
         if (!newCourseName) {
             addNotification("El nombre del curso/taller es obligatorio", "error");
@@ -196,18 +199,13 @@ function Config({ configLevels, setConfigLevels, addNotification, globalSede, ge
         };
 
         const updated = [...configLevels, newLvl];
-        setConfigLevels(updated);
-        addNotification(`Curso "${newCourseName}" añadido a la lista. Recuerda Guardar Cambios.`, "success");
+        await handleSaveToFirebase(updated);
         e.target.reset();
     };
 
-    const handleDeleteLevel = (id) => {
-        const itemToDelete = configLevels.find(c => c.id === id);
+    const handleDeleteLevel = async (id) => {
         const updated = configLevels.filter(lvl => lvl.id !== id);
-        setConfigLevels(updated);
-        if (itemToDelete) {
-            addNotification(`Curso "${itemToDelete.curso_nivel}" eliminado de la lista. Recuerda Guardar Cambios.`, "info");
-        }
+        await handleSaveToFirebase(updated);
     };
 
     const handleCreateSede = async (e) => {
@@ -374,9 +372,8 @@ function Config({ configLevels, setConfigLevels, addNotification, globalSede, ge
                             <input 
                                 type="number"
                                 name="inscripcion"
-                                placeholder="Ej: 20000"
+                                placeholder="Opcional"
                                 className="w-full p-2.5 rounded-xl border border-stone-200 outline-none bg-white font-semibold focus:ring-2 focus:ring-amber-500 text-sm transition-all"
-                                required
                             />
                         </div>
                         <div className="w-full">
@@ -384,9 +381,8 @@ function Config({ configLevels, setConfigLevels, addNotification, globalSede, ge
                             <input 
                                 type="number"
                                 name="cuota"
-                                placeholder="Ej: 25000"
+                                placeholder="Opcional"
                                 className="w-full p-2.5 rounded-xl border border-stone-200 outline-none bg-white font-semibold focus:ring-2 focus:ring-amber-500 text-sm transition-all"
-                                required
                             />
                         </div>
                         <button 
@@ -424,7 +420,7 @@ function Config({ configLevels, setConfigLevels, addNotification, globalSede, ge
                                             <span className="absolute left-3 text-stone-500 font-bold">$</span>
                                             <input 
                                                 type="number"
-                                                value={c.inscripcion}
+                                                value={c.inscripcion === undefined ? "" : c.inscripcion}
                                                 onChange={(e) => handleLevelChange(c.id, 'inscripcion', e.target.value)}
                                                 className="w-full py-2 pl-7 pr-2 rounded-lg border border-stone-200 bg-white font-bold text-stone-700 text-center [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                                             />
@@ -435,7 +431,7 @@ function Config({ configLevels, setConfigLevels, addNotification, globalSede, ge
                                             <span className="absolute left-3 text-stone-500 font-bold">$</span>
                                             <input 
                                                 type="number"
-                                                value={c.cuota}
+                                                value={c.cuota === undefined ? "" : c.cuota}
                                                 onChange={(e) => handleLevelChange(c.id, 'cuota', e.target.value)}
                                                 className="w-full py-2 pl-7 pr-2 rounded-lg border border-stone-200 bg-white font-bold text-stone-700 text-center [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                                             />
@@ -483,8 +479,9 @@ function Config({ configLevels, setConfigLevels, addNotification, globalSede, ge
             </div>
 
             {/* ─── Inscripción a Mesas de Examen ─── */}
-            <div className="bg-white p-6 rounded-3xl shadow-sm border border-stone-100 lg:col-span-2">
-                <h3 className="text-lg font-bold text-stone-800 mb-1 flex items-center gap-2">
+            {currentUser?.sede?.includes("Leandro N. Alem") && (
+                <div className="bg-white p-6 rounded-3xl shadow-sm border border-stone-100 lg:col-span-2">
+                    <h3 className="text-lg font-bold text-stone-800 mb-1 flex items-center gap-2">
                     <i className="fas fa-gavel text-emerald-600"></i> Inscripción a Mesas de Examen (Portal Alumno)
                 </h3>
                 <p className="text-sm text-stone-400 mb-5">
@@ -550,6 +547,7 @@ function Config({ configLevels, setConfigLevels, addNotification, globalSede, ge
                     </button>
                 </div>
             </div>
+            )}
 
             {globalSede === "Leandro N. Alem" && (
                 <>

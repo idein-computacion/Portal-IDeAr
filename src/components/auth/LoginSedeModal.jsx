@@ -170,7 +170,8 @@ const LoginSedeModal = ({
                 <img src="/logo.png" alt="Logo IDeAr" className="w-full h-auto object-contain drop-shadow-lg" />
             </div>
             <div className="bg-white p-8 sm:p-10 rounded-[2rem] shadow-2xl border border-stone-100 max-w-2xl w-full text-center">
-                <h2 className="text-2xl font-black text-stone-850 uppercase tracking-widest mb-6">Selecciona la Sede</h2>
+                <h1 className="text-3xl font-black text-stone-900 mb-2" style={{ fontFamily: 'Arial, Helvetica, sans-serif' }}>Bienvenido al Portal IDeAr</h1>
+                <h2 className="text-xl font-bold text-stone-500 uppercase tracking-widest mb-6">Selecciona la Sede</h2>
                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
                     {sedes.map(s => (
                         <button
