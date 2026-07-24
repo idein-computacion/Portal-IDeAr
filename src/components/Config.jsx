@@ -2,26 +2,11 @@ import React, { useState } from 'react';
 import { ref, set, remove, get } from 'firebase/database';
 import { rtdb } from '../config/firebase';
 import { NIVELES } from '../data/seedData';
+import { createAuthUserWithoutSignIn, changePassword } from '../services/authService';
 
 
 function UserRow({ user, currentUser, addNotification }) {
-    const [isEditing, setIsEditing] = useState(false);
-    const [newPass, setNewPass] = useState(user.password || "");
-    const [showPass, setShowPass] = useState(false);
-
-    const handleSavePassword = async () => {
-        if (!newPass.trim()) {
-            addNotification("La contraseña no puede estar vacía", "error");
-            return;
-        }
-        try {
-            await set(ref(rtdb, `usuarios/${user.dni}/password`), newPass.trim());
-            addNotification(`Contraseña actualizada para ${user.nombre}`, "success");
-            setIsEditing(false);
-        } catch (e) {
-            addNotification("Error al actualizar contraseña", "error");
-        }
-    };
+    const [showPass] = useState(false);
 
     const handleDelete = async () => {
         const userSedes = user.sede ? user.sede.split(',').map(s => s.trim()) : [];
@@ -62,50 +47,13 @@ function UserRow({ user, currentUser, addNotification }) {
                 </div>
             </td>
             <td className="py-3 px-3">
-                {isEditing ? (
-                    <div className="flex items-center gap-2">
-                        <input 
-                            type="text"
-                            value={newPass}
-                            onChange={(e) => setNewPass(e.target.value)}
-                            className="p-1 px-2 border border-stone-300 rounded text-xs focus:ring-1 focus:ring-orange-500 outline-none w-32 bg-white text-stone-800"
-                        />
-                        <button 
-                            onClick={handleSavePassword}
-                            className="p-1 text-emerald-600 hover:text-emerald-800"
-                            title="Guardar"
-                        >
-                            <i className="fas fa-check"></i>
-                        </button>
-                        <button 
-                            onClick={() => { setIsEditing(false); setNewPass(user.password || ""); }}
-                            className="p-1 text-rose-600 hover:text-rose-800"
-                            title="Cancelar"
-                        >
-                            <i className="fas fa-times"></i>
-                        </button>
-                    </div>
-                ) : (
-                    <div className="flex items-center gap-2 text-stone-650">
-                        <span>{showPass ? user.password : "••••••••"}</span>
-                        <button 
-                            onClick={() => setShowPass(!showPass)}
-                            className="text-stone-400 hover:text-stone-650"
-                        >
-                            <i className={`fas ${showPass ? 'fa-eye-slash' : 'fa-eye'} text-xs`}></i>
-                        </button>
-                    </div>
-                )}
+                <div className="flex items-center gap-2 text-stone-500">
+                    <i className="fas fa-shield-alt text-emerald-500 text-xs"></i>
+                    <span className="text-xs">Firebase Auth</span>
+                </div>
             </td>
             <td className="py-3 px-3 text-center">
                 <div className="flex items-center justify-center gap-2">
-                    <button 
-                        onClick={() => setIsEditing(true)}
-                        title="Cambiar Contraseña"
-                        className="p-1.5 bg-orange-50 hover:bg-orange-500 hover:text-white text-orange-600 rounded-lg transition-all"
-                    >
-                        <i className="fas fa-key text-xs"></i>
-                    </button>
                     <button 
                         onClick={handleDelete}
                         disabled={user.sede === "Leandro N. Alem"}
@@ -286,6 +234,11 @@ function Config({ configLevels, setConfigLevels, addNotification, globalSede, ge
             return;
         }
 
+        if (pass.length < 6) {
+            addNotification("La contraseña debe tener al menos 6 caracteres", "error");
+            return;
+        }
+
         try {
             const snapshot = await get(ref(rtdb, `usuarios/${dni}`));
             if (snapshot.exists()) {
@@ -293,13 +246,17 @@ function Config({ configLevels, setConfigLevels, addNotification, globalSede, ge
                 return;
             }
 
-            const newUser = { dni, nombre, password: pass, sede };
+            // Crear cuenta en Firebase Auth (sin afectar la sesión actual)
+            await createAuthUserWithoutSignIn(dni, pass);
+
+            // Guardar perfil en RTDB (SIN contraseña)
+            const newUser = { dni, nombre, sede };
             await set(ref(rtdb, `usuarios/${dni}`), newUser);
             addNotification(`Usuario "${nombre}" creado con éxito para: ${sede}`, "success");
             e.target.reset();
         } catch (err) {
             console.error("Error al crear usuario:", err);
-            addNotification("Error de conexión: " + err.message, "error");
+            addNotification("Error: " + err.message, "error");
         }
     };
 
@@ -328,20 +285,25 @@ function Config({ configLevels, setConfigLevels, addNotification, globalSede, ge
                         <div className="mt-4 md:mt-0 pt-4 md:pt-6">
                             <button 
                                 type="button"
-                                onClick={() => {
+                                onClick={async () => {
                                     const currentPass = prompt("Por seguridad, ingresa tu contraseña actual:");
-                                    if (currentPass !== currentUser.password) {
-                                        addNotification("La contraseña actual es incorrecta", "error");
+                                    if (!currentPass) return;
+                                    const newPass = prompt("Ingresa tu nueva contraseña (mínimo 6 caracteres):");
+                                    if (!newPass || newPass.trim() === "" || newPass.trim().length < 6) {
+                                        if (newPass) addNotification("La contraseña debe tener al menos 6 caracteres", "error");
                                         return;
                                     }
-                                    const newPass = prompt("Ingresa tu nueva contraseña:");
-                                    if (!newPass || newPass.trim() === "") return;
-                                    set(ref(rtdb, `usuarios/${currentUser.dni}/password`), newPass.trim())
-                                        .then(() => {
-                                            addNotification("Contraseña actualizada con éxito", "success");
-                                            currentUser.password = newPass.trim(); // Actualización optimista local
-                                        })
-                                        .catch(() => addNotification("Error actualizando la contraseña", "error"));
+                                    try {
+                                        await changePassword(currentPass, newPass.trim());
+                                        addNotification("Contraseña actualizada con éxito", "success");
+                                    } catch (err) {
+                                        console.error('Error cambiando contraseña:', err);
+                                        if (err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential') {
+                                            addNotification("La contraseña actual es incorrecta", "error");
+                                        } else {
+                                            addNotification("Error actualizando la contraseña: " + (err.message || ''), "error");
+                                        }
+                                    }
                                 }}
                                 className="w-full md:w-auto bg-stone-200 hover:bg-stone-300 text-stone-700 font-bold py-3 px-6 rounded-xl transition-all shadow-sm text-sm flex items-center justify-center gap-2"
                             >

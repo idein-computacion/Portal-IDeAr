@@ -1,6 +1,42 @@
 {
   "rules": {
-    ".read": true,
-    ".write": true
+    "alumnos": {
+      ".read": "auth != null",
+      ".write": "auth != null"
+    },
+    "pagos": {
+      ".read": "auth != null",
+      ".write": "auth != null"
+    },
+    "recibos": {
+      ".read": "auth != null",
+      ".write": "auth != null"
+    },
+    "usuarios": {
+      ".read": "auth != null",
+      "$uid": {
+        ".write": "auth != null"
+      }
+    },
+    "config": {
+      ".read": "auth != null",
+      ".write": "auth != null"
+    },
+    "calificaciones": {
+      ".read": "auth != null",
+      ".write": "auth != null"
+    },
+    "asistencias": {
+      ".read": "auth != null",
+      ".write": "auth != null"
+    },
+    "mesasExamen": {
+      ".read": "auth != null",
+      ".write": "auth != null"
+    },
+    "sedes": {
+      ".read": true,
+      ".write": "auth != null"
+    }
   }
 }

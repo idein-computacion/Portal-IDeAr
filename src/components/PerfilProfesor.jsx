@@ -8,7 +8,6 @@ function PerfilProfesor({ currentUser, profileUser, globalSede, setCurrentUser, 
     // Estado del formulario — se inicializa desde profileUser
     const [nombre, setNombre] = useState(profileUser?.nombre || "");
     const [dni, setDni] = useState(profileUser?.dni || "");
-    const [password, setPassword] = useState(profileUser?.password || "");
     const [telefono, setTelefono] = useState(profileUser?.telefono || "");
     const [email, setEmail] = useState(profileUser?.email || "");
     const [bio, setBio] = useState(profileUser?.bio || "");
@@ -20,7 +19,6 @@ function PerfilProfesor({ currentUser, profileUser, globalSede, setCurrentUser, 
         if (profileUser) {
             setNombre(profileUser.nombre || "");
             setDni(profileUser.dni || "");
-            setPassword(profileUser.password || "");
             setTelefono(profileUser.telefono || "");
             setEmail(profileUser.email || "");
             setBio(profileUser.bio || "");
@@ -28,7 +26,6 @@ function PerfilProfesor({ currentUser, profileUser, globalSede, setCurrentUser, 
         } else {
             setNombre("");
             setDni("");
-            setPassword("");
             setTelefono("");
             setEmail("");
             setBio("");
@@ -56,10 +53,9 @@ function PerfilProfesor({ currentUser, profileUser, globalSede, setCurrentUser, 
         e.preventDefault();
         const trimmedDni = dni.trim();
         const trimmedNombre = nombre.trim();
-        const trimmedPassword = password;
 
-        if (!trimmedDni || !trimmedNombre || !trimmedPassword) {
-            addNotification("Nombre, DNI y Contraseña son campos obligatorios", "error");
+        if (!trimmedDni || !trimmedNombre) {
+            addNotification("Nombre y DNI son campos obligatorios", "error");
             return;
         }
 
@@ -90,7 +86,6 @@ function PerfilProfesor({ currentUser, profileUser, globalSede, setCurrentUser, 
             const updatedUser = {
                 dni: trimmedDni,
                 nombre: trimmedNombre,
-                password: trimmedPassword,
                 // Mantiene la sede del perfil editado (no la del admin)
                 sede: profileUser?.sede || globalSede,
                 telefono: telefono.trim(),
@@ -113,7 +108,6 @@ function PerfilProfesor({ currentUser, profileUser, globalSede, setCurrentUser, 
             // Solo actualizar currentUser si el que guarda es el mismo usuario logueado
             if (!isAdmin) {
                 setCurrentUser(updatedUser);
-                localStorage.setItem('idear_user', JSON.stringify(updatedUser));
             }
 
             addNotification(
@@ -261,21 +255,12 @@ function PerfilProfesor({ currentUser, profileUser, globalSede, setCurrentUser, 
                             </div>
                         </div>
 
-                        {/* Contraseña */}
+                        {/* Contraseña — gestionada por Firebase Auth */}
                         <div>
-                            <label className="block text-xs font-bold text-stone-500 uppercase mb-2">Contraseña Personal</label>
-                            <div className="relative">
-                                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-stone-400">
-                                    <i className="fas fa-key"></i>
-                                </span>
-                                <input 
-                                    type="text" 
-                                    value={password}
-                                    onChange={(e) => setPassword(e.target.value)}
-                                    placeholder="Contraseña de acceso"
-                                    className="w-full pl-11 pr-4 py-3 rounded-xl border border-stone-200 outline-none bg-stone-50/50 font-semibold focus:ring-2 focus:ring-orange-500 transition-all text-stone-850"
-                                    required
-                                />
+                            <label className="block text-xs font-bold text-stone-500 uppercase mb-2">Contraseña</label>
+                            <div className="flex items-center gap-3 pl-4 py-3 rounded-xl border border-stone-200 bg-stone-50/50">
+                                <i className="fas fa-shield-alt text-emerald-500"></i>
+                                <span className="text-sm text-stone-500">Gestionada por Firebase Auth — usa "Cambiar mi Contraseña" en Configuración</span>
                             </div>
                         </div>
 

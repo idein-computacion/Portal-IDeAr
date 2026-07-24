@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { METODOS_PAGO, PERIODOS, NIVELES } from './data/seedData';
 import { rtdb } from './config/firebase';
 import { ref, set, get, remove, update } from 'firebase/database';
+import { loginWithDni, logout as firebaseLogout, observeAuthState, createAuthUser, dniToEmail } from './services/authService';
 
 import DashboardRecibos from './components/DashboardRecibos';
 import Config from './components/Config';
@@ -33,10 +34,8 @@ import { getHistoricalValues, MONTHS_ORDER, isMonthInactive } from './utils/math
 function App() {
     const [globalSede, setGlobalSede] = useState(() => localStorage.getItem('idear_sede') || "");
     const [tempSede, setTempSede] = useState(null);
-    const [currentUser, setCurrentUser] = useState(() => {
-        const u = localStorage.getItem('idear_user');
-        return u ? JSON.parse(u) : null;
-    });
+    const [currentUser, setCurrentUser] = useState(null);
+    const [authReady, setAuthReady] = useState(false);
     const [currentTab, setCurrentTab] = useState("dashboard");
     const [notifications, setNotifications] = useState([]);
 
@@ -136,6 +135,51 @@ function App() {
         return null;
     }, [payments]);
 
+    // Firebase Auth observer — restaura sesión real del servidor
+    useEffect(() => {
+        const unsubscribe = observeAuthState(async (firebaseUser) => {
+            if (firebaseUser) {
+                // Usuario autenticado en Firebase — buscar su perfil en RTDB
+                const dni = firebaseUser.email.replace('@portal-idear.app', '');
+                try {
+                    const userRef = ref(rtdb, `usuarios/${dni}`);
+                    const snapshot = await get(userRef);
+                    if (snapshot.exists()) {
+                        const userData = snapshot.val();
+                        setCurrentUser(userData);
+                        const savedSede = localStorage.getItem('idear_sede');
+                        if (savedSede) {
+                            setGlobalSede(savedSede);
+                        }
+                    } else {
+                        // El usuario auth existe pero no tiene perfil en RTDB
+                        // Esto puede pasar con alumnos — buscar en alumnos
+                        const alumnosRef = ref(rtdb, 'alumnos');
+                        const alumnosSnap = await get(alumnosRef);
+                        if (alumnosSnap.exists()) {
+                            const alumnosData = alumnosSnap.val();
+                            const foundAlumno = Object.values(alumnosData).find(a => a.dni === dni && a.active !== false);
+                            if (foundAlumno) {
+                                const alumnoUser = { ...foundAlumno, rol: 'Alumno', nombre: foundAlumno.name };
+                                setCurrentUser(alumnoUser);
+                                const savedSede = localStorage.getItem('idear_sede');
+                                if (savedSede) setGlobalSede(savedSede);
+                            }
+                        }
+                    }
+                } catch (err) {
+                    console.error('Error cargando perfil de usuario:', err);
+                }
+            } else {
+                // No hay sesión activa
+                setCurrentUser(null);
+                // No limpiamos globalSede aquí — lo hace handleLogout explícitamente
+            }
+            setAuthReady(true);
+        });
+        return () => unsubscribe();
+    }, []);
+
     useEffect(() => {
         if (tempSede) {
             const hasAdminUser = users.some(u => u.sede === tempSede && u.dni === 'admin');
@@ -199,18 +243,24 @@ function App() {
                 addNotification("Define una contraseña para el administrador", "error");
                 return;
             }
-            const adminUser = {
-                dni: 'admin',
-                nombre: authNombre.trim(),
-                password: pwd,
-                sede: "Leandro N. Alem",
-                rol: 'Director'
-            };
+            if (pwd.length < 6) {
+                addNotification("La contraseña debe tener al menos 6 caracteres", "error");
+                return;
+            }
             try {
+                // Crear usuario en Firebase Auth (esto también inicia sesión automáticamente)
+                await createAuthUser('admin', pwd);
+                // Guardar perfil en RTDB (sin contraseña en texto plano)
+                const adminUser = {
+                    dni: 'admin',
+                    nombre: authNombre.trim(),
+                    sede: "Leandro N. Alem",
+                    rol: 'Director'
+                };
+                // Al estar autenticado, la escritura será permitida por las reglas
                 await set(ref(rtdb, `usuarios/admin`), adminUser);
                 addNotification("Cuenta Administrador Principal inicializada correctamente", "success");
                 setHasAdmin(true);
-                localStorage.setItem('idear_user', JSON.stringify(adminUser));
                 localStorage.setItem('idear_sede', "Leandro N. Alem");
                 setGlobalSede("Leandro N. Alem");
                 setCurrentUser(adminUser);
@@ -219,46 +269,54 @@ function App() {
                 setAuthPassword("");
                 setAuthNombre("");
             } catch (err) {
-                addNotification("Error registrando administrador", "error");
+                console.error("Error registrando administrador:", err);
+                addNotification("Error registrando administrador: " + (err.message || ""), "error");
             }
             return;
         }
 
         try {
-            // 1. Primero intentar login como usuario de staff (profesor/director)
+            // 1. INICIAR SESIÓN EN FIREBASE AUTH PRIMERO
+            // (Para los alumnos, si no ingresaron contraseña, usamos su DNI como contraseña por defecto)
+            const loginPassword = pwd || username; 
+            
+            try {
+                await loginWithDni(username, loginPassword);
+            } catch (authErr) {
+                console.error("Error Firebase Auth:", authErr);
+                addNotification("Credenciales incorrectas o usuario no registrado.", "error");
+                return;
+            }
+
+            // 2. UNA VEZ AUTENTICADO, LEEMOS RTDB PARA VERIFICAR SEDE Y ROL
+            
+            // A) Verificar si es un usuario de staff (profesor/director)
             const userRef = ref(rtdb, `usuarios/${username}`);
             const snapshot = await get(userRef);
 
             if (snapshot.exists()) {
-                // Es un usuario de staff — requiere contraseña
-                if (!pwd) {
-                    addNotification("Los profesores y directores deben ingresar su contraseña", "error");
+                const userData = snapshot.val();
+                const userSedes = userData.sede ? userData.sede.split(',').map(s => s.trim()) : [];
+                const hasAccess = userSedes.includes(tempSede) || userSedes.includes("Leandro N. Alem");
+                
+                if (!hasAccess) {
+                    await firebaseLogout();
+                    addNotification(`Tu usuario está registrado para: "${userData.sede}". No tienes acceso a "${tempSede}".`, "error");
                     return;
                 }
-                const userData = snapshot.val();
-                if (userData.password === pwd) {
-                    const userSedes = userData.sede ? userData.sede.split(',').map(s => s.trim()) : [];
-                    const hasAccess = userSedes.includes(tempSede) || userSedes.includes("Leandro N. Alem");
-                    if (hasAccess) {
-                        addNotification(`¡Bienvenido, Prof. ${userData.nombre}!`, "success");
-                        localStorage.setItem('idear_sede', tempSede);
-                        localStorage.setItem('idear_user', JSON.stringify(userData));
-                        setGlobalSede(tempSede);
-                        setCurrentUser(userData);
-                        setTempSede(null);
-                        setAuthDni("");
-                        setAuthPassword("");
-                        setAuthNombre("");
-                    } else {
-                        addNotification(`Tu usuario está registrado para: "${userData.sede}". No tienes acceso a "${tempSede}".`, "error");
-                    }
-                } else {
-                    addNotification("Contraseña incorrecta", "error");
-                }
+
+                addNotification(`¡Bienvenido, Prof. ${userData.nombre}!`, "success");
+                localStorage.setItem('idear_sede', tempSede);
+                setGlobalSede(tempSede);
+                setCurrentUser(userData);
+                setTempSede(null);
+                setAuthDni("");
+                setAuthPassword("");
+                setAuthNombre("");
                 return;
             }
 
-            // 2. No es usuario de staff — buscar en alumnos por DNI + sede
+            // B) No es staff, buscar en alumnos
             const alumnosRef = ref(rtdb, 'alumnos');
             const alumnosSnap = await get(alumnosRef);
             if (alumnosSnap.exists()) {
@@ -266,8 +324,8 @@ function App() {
                 const foundAlumno = Object.values(alumnosData).find(
                     a => a.dni === username && a.sede === tempSede && a.active !== false
                 );
+                
                 if (foundAlumno) {
-                    // Alumno encontrado en la sede seleccionada — acceso con contraseña vacía por ahora
                     const alumnoUser = {
                         ...foundAlumno,
                         rol: 'Alumno',
@@ -275,7 +333,6 @@ function App() {
                     };
                     addNotification(`¡Bienvenido/a, ${foundAlumno.name}!`, "success");
                     localStorage.setItem('idear_sede', tempSede);
-                    localStorage.setItem('idear_user', JSON.stringify(alumnoUser));
                     setGlobalSede(tempSede);
                     setCurrentUser(alumnoUser);
                     setTempSede(null);
@@ -284,24 +341,33 @@ function App() {
                     setAuthNombre("");
                     return;
                 }
-                // Buscar en otras sedes (alumno activo con ese DNI)
+                
+                // Buscar si existe en otra sede
                 const alumnoOtraSede = Object.values(alumnosData).find(
                     a => a.dni === username && a.active !== false
                 );
                 if (alumnoOtraSede) {
+                    await firebaseLogout();
                     addNotification(`Tu DNI está registrado en la sede "${alumnoOtraSede.sede}", no en "${tempSede}".`, "error");
                     return;
                 }
             }
 
-            addNotification("DNI no registrado. Verificá la sede seleccionada o contactá a Dirección.", "error");
+            await firebaseLogout();
+            addNotification("DNI no registrado en esta sede. Contactá a Dirección.", "error");
+
         } catch (err) {
             console.error("Error al autenticar:", err);
             addNotification("Error de conexión al autenticar", "error");
         }
     };
 
-    const handleLogout = () => {
+    const handleLogout = async () => {
+        try {
+            await firebaseLogout();
+        } catch (err) {
+            console.error('Error al cerrar sesión:', err);
+        }
         localStorage.removeItem('idear_sede');
         localStorage.removeItem('idear_user');
         setGlobalSede("");

@@ -61,23 +61,23 @@ const StudentModal = ({
             <div className="bg-white rounded-3xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto overflow-x-hidden relative">
                 
                 {/* Header Guardapampa */}
-                <div className="relative bg-[#3e2723] overflow-hidden p-6 text-[#fff8e1]">
-                    <div className="absolute inset-0 opacity-10" style={{ 
-                        backgroundImage: `url("data:image/svg+xml,%3Csvg width='40' height='40' viewBox='0 0 40 40' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M20 0l20 20-20 20L0 20z M20 10l10 10-10 10-10-10z' fill='%23fff8e1' fill-rule='evenodd'/%3E%3C/svg%3E")`,
-                        backgroundSize: '40px 40px'
+                <div className="relative bg-gradient-to-r from-black via-orange-600 to-yellow-500 overflow-hidden p-6 text-white">
+                    <div className="absolute inset-0 z-0 opacity-100 mix-blend-overlay pointer-events-none" style={{ 
+                        backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='80' height='80' viewBox='0 0 80 80'%3E%3Cpath fill='rgba(255,255,255,0.1)' d='M35,15h10v5h5v5h5v10h10v10h-10v10h-5v5h-5v5h-10v-5h-5v-5h-5v-10h-10v-10h10v-10h5v-5h5v-5z M35,30v5h-5v10h5v5h10v-5h5v-10h-5v-5h-10z M-5,-10h10v5h5v10h-5v5h-10v-5h-5v-10h5v-5z M75,-10h10v5h5v10h-5v5h-10v-5h-5v-10h5v-5z M-5,70h10v5h5v10h-5v5h-10v-5h-5v-10h5v-5z M75,70h10v5h5v10h-5v5h-10v-5h-5v-10h5v-5z'/%3E%3C/svg%3E")`,
+                        backgroundSize: '80px 80px'
                     }}></div>
                     
-                    <div className="absolute -left-8 -top-8 opacity-20 pointer-events-none">
-                        <img src="/logo.png" alt="IDeAr" className="w-40 h-40 object-contain drop-shadow-xl filter grayscale contrast-200 brightness-200" />
+                    <div className="absolute right-8 bottom-0 opacity-40 pointer-events-none translate-y-4 mix-blend-screen">
+                        <img src="/logo.png" alt="" className="w-48 h-48 object-contain drop-shadow-2xl" />
                     </div>
 
                     <div className="relative z-10 flex flex-col sm:flex-row items-center sm:items-start gap-4">
                         <div className="relative group">
-                            <div className="w-24 h-24 rounded-full bg-[#5d4037] border-4 border-[#fff8e1] overflow-hidden flex items-center justify-center shadow-lg">
+                            <div className="w-24 h-24 rounded-full bg-orange-700 border-4 border-white overflow-hidden flex items-center justify-center shadow-lg">
                                 {profilePic ? (
                                     <img src={profilePic} alt="Perfil" className="w-full h-full object-cover" />
                                 ) : (
-                                    <i className="fas fa-user text-4xl text-[#fff8e1]/50"></i>
+                                    <i className="fas fa-user text-4xl text-white/50"></i>
                                 )}
                             </div>
                             <label className="absolute bottom-0 right-0 bg-amber-500 hover:bg-amber-600 text-white w-8 h-8 rounded-full flex items-center justify-center cursor-pointer shadow-md transition-all">
