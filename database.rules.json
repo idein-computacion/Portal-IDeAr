@@ -37,6 +37,22 @@
     "sedes": {
       ".read": true,
       ".write": "auth != null"
+    },
+    "campus_publicaciones": {
+      ".read": "auth != null",
+      ".write": "auth != null"
+    },
+    "campus_temas": {
+      ".read": "auth != null",
+      ".write": "auth != null"
+    },
+    "campus_trabajos": {
+      ".read": "auth != null",
+      ".write": "auth != null"
+    },
+    "campus_entregas": {
+      ".read": "auth != null",
+      ".write": "auth != null"
     }
   }
 }

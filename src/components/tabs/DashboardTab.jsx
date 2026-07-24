@@ -81,27 +81,29 @@ const DashboardTab = ({
                     </div>
                 </div>
 
-                <div className="bg-white p-5 rounded-2xl shadow-sm border border-stone-100 flex flex-col justify-between">
-                    <p className="text-xs text-stone-400 font-semibold uppercase mb-3">Cobros por Mes</p>
-                    <div className="flex justify-between items-end h-16 gap-1 w-full mt-auto">
-                        {chartData.map(item => {
-                            const maxVal = Math.max(...chartData.map(c => c.total), 1);
-                            const heightPercent = Math.min(100, Math.max(5, Math.round((item.total / maxVal) * 100)));
-                            return (
-                                <div key={item.month} className="flex flex-col items-center justify-end flex-1 h-full group relative">
-                                    <span className="text-[10px] font-bold text-stone-600 opacity-0 group-hover:opacity-100 transition-opacity absolute -top-6 bg-white border border-stone-100 px-1 rounded shadow-sm z-10 whitespace-nowrap pointer-events-none">
-                                        ${(item.total / 1000).toFixed(0)}k
-                                    </span>
-                                    <div className="w-full flex-1 flex items-end relative">
-                                        <div 
-                                            style={{ height: `${heightPercent}%` }} 
-                                            className="w-full bg-orange-400 group-hover:bg-orange-600 rounded-t-sm transition-all duration-300 cursor-pointer"
-                                        ></div>
-                                    </div>
-                                    <span className="text-[8px] text-stone-400 uppercase font-bold truncate w-full text-center mt-1">{item.month.substring(0,3)}</span>
-                                </div>
-                            );
-                        })}
+                <div 
+                    onClick={() => setCurrentTab('campus')}
+                    className="bg-gradient-to-br from-indigo-900 via-indigo-800 to-purple-900 p-6 rounded-2xl shadow-xl border border-indigo-700 flex flex-col justify-between text-white cursor-pointer hover:shadow-2xl hover:-translate-y-1 transition-all duration-300 relative overflow-hidden group"
+                >
+                    <div className="absolute -bottom-6 -right-6 opacity-20 text-9xl transform group-hover:scale-110 group-hover:-rotate-12 transition-all duration-500 pointer-events-none">
+                        <i className="fas fa-graduation-cap"></i>
+                    </div>
+                    <div className="relative z-10 flex flex-col h-full justify-between">
+                        <div>
+                            <div className="w-12 h-12 bg-white/10 rounded-xl flex items-center justify-center mb-4 backdrop-blur-sm border border-white/20">
+                                <i className="fas fa-book-open text-2xl text-indigo-200"></i>
+                            </div>
+                            <h3 className="text-2xl font-black mb-2 tracking-tight">Campus Virtual</h3>
+                            <p className="text-indigo-200 text-sm font-medium leading-relaxed max-w-[90%]">
+                                Accede a tus aulas virtuales, publicaciones, tareas y material de estudio.
+                            </p>
+                        </div>
+                        <div className="flex items-center justify-between mt-6 pt-4 border-t border-indigo-700/50">
+                            <span className="text-sm font-bold tracking-wide text-indigo-100">Ingresar al Campus</span>
+                            <div className="w-8 h-8 rounded-full bg-indigo-600 flex items-center justify-center group-hover:bg-indigo-500 transition-colors shadow-inner">
+                                <i className="fas fa-arrow-right text-xs"></i>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>

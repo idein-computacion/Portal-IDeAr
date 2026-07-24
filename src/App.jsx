@@ -8,6 +8,7 @@ import DashboardRecibos from './components/DashboardRecibos';
 import Config from './components/Config';
 import PerfilProfesor from './components/PerfilProfesor';
 import BoletinHistorialPreview from './components/BoletinHistorialPreview';
+import CampusMain from './components/campus/CampusMain';
 import CertificadoAnaliticoPreview from './components/CertificadoAnaliticoPreview';
 import PublicReceipt from './components/PublicReceipt';
 
@@ -1742,6 +1743,17 @@ function App() {
                         setCurrentTab={setCurrentTab}
                         configLevels={configLevels}
                         studentDebts={studentDebts}
+                    />
+                )}
+
+                {currentTab === "campus" && (
+                    <CampusMain
+                        currentUser={currentUser}
+                        globalSede={globalSede}
+                        configLevels={configLevels}
+                        generalConfig={generalConfig}
+                        gradeColumns={configLevels.length > 0 ? Object.values(configLevels[0].materias || {}) : []}
+                        addNotification={addNotification}
                     />
                 )}
 

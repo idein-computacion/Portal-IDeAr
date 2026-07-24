@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { ref, set, update } from 'firebase/database';
 import { rtdb } from '../config/firebase';
 import BoletinModal from './modals/BoletinModal';
+import CampusMain from './campus/CampusMain';
 import { getHistoricalValues, isMonthInactive, MONTHS_ORDER } from '../utils/mathHelpers';
 
 const MONTHS_ES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
@@ -303,6 +304,7 @@ export default function StudentDashboard({
         { id: 'inasistencias', icon: 'fa-calendar-times',      title: 'Inasistencias',  color: { bg: '#fdf4ff', border: '#a855f7', text: '#7e22ce', active: '' }, badge: absents || undefined },
         { id: 'finanzas',     icon: 'fa-file-invoice-dollar',  title: 'Estado Financiero', color: { bg: debt > 0 ? '#fff1f2' : '#f0fdf4', border: debt > 0 ? '#f43f5e' : '#22c55e', text: debt > 0 ? '#be123c' : '#15803d', active: '' } },
         { id: 'mesas',        icon: 'fa-gavel',                title: 'Inscripción Mesas', color: { bg: '#ecfdf5', border: '#10b981', text: '#065f46', active: '' } },
+        { id: 'campus',       icon: 'fa-chalkboard-teacher',   title: 'Aula Virtual', color: { bg: '#e0e7ff', border: '#4f46e5', text: '#3730a3', active: '' } },
     ];
 
     return (
@@ -398,6 +400,20 @@ export default function StudentDashboard({
 
             {/* ─── Content ─── */}
             <div className="max-w-5xl mx-auto px-4 pb-20 pt-4">
+
+                {/* ─ Aula Virtual ─ */}
+                {activeSection === 'campus' && (
+                    <div className="bg-white rounded-3xl shadow-xl overflow-hidden animate-fadeIn min-h-[600px]">
+                        <CampusMain 
+                            currentUser={currentUser}
+                            globalSede={globalSede}
+                            configLevels={configLevels}
+                            generalConfig={generalConfig}
+                            gradeColumns={gradeColumns}
+                            addNotification={addNotification}
+                        />
+                    </div>
+                )}
 
                 {/* ─ Ficha ─ */}
                 {activeSection === 'ficha' && (
