@@ -24,7 +24,8 @@ export default function TaskDetailView({ work, classroom, currentUser, onBack, a
     const [docContent, setDocContent] = useState('');
     const [viewingDocument, setViewingDocument] = useState(null);
 
-    const studentId = currentUser?.uid || currentUser?.dni || 'unknown'; // Need consistent ID
+    const studentId = currentUser?.dni || currentUser?.uid || currentUser?.id || 'alumno_sin_id';
+    const studentName = currentUser?.nombre || currentUser?.name || currentUser?.nombreCompleto || 'Alumno';
 
     useEffect(() => {
         // Load submission data
@@ -71,64 +72,82 @@ export default function TaskDetailView({ work, classroom, currentUser, onBack, a
         return `${d}/${m}/${y}`;
     };
 
+    const saveSubmissionToDB = async (attachmentsList, newStatus = null) => {
+        try {
+            const subRef = ref(rtdb, `campus_entregas/${classroom.id}/${work.id}/${studentId}`);
+            const payload = {
+                studentId,
+                studentName,
+                attachments: attachmentsList,
+                updatedAt: Date.now()
+            };
+            if (newStatus) {
+                payload.status = newStatus;
+            } else if (submission?.status) {
+                payload.status = submission.status;
+            } else {
+                payload.status = 'Asignada';
+            }
+            await update(subRef, payload);
+        } catch (err) {
+            console.error("Error al guardar entrega en base de datos:", err);
+        }
+    };
+
     const handleMarkCompleted = async () => {
         try {
             const isCompleted = submission?.status === 'Entregado';
             const newStatus = isCompleted ? 'Asignada' : 'Entregado';
             
-            const subRef = ref(rtdb, `campus_entregas/${classroom.id}/${work.id}/${studentId}`);
-            await set(subRef, {
-                studentId,
-                studentName: currentUser?.nombre || currentUser?.name || 'Alumno',
-                status: newStatus,
-                attachments: myAttachments,
-                updatedAt: Date.now()
-            });
-            addNotification(isCompleted ? 'Entrega anulada' : 'Tarea entregada con éxito', 'success');
+            await saveSubmissionToDB(myAttachments, newStatus);
+            addNotification(isCompleted ? 'Entrega anulada' : '✅ Tarea entregada con éxito al profesor', 'success');
         } catch (error) {
             console.error("Error updating submission:", error);
             addNotification('Error al procesar la entrega', 'error');
         }
     };
 
-    const handleAddLink = () => {
+    const handleAddLink = async () => {
         if (!linkUrl.trim()) return;
-        setMyAttachments([...myAttachments, {
+        const newAtt = {
             id: Date.now().toString(),
             type: linkModalConfig.type,
             url: linkUrl.trim(),
             title: linkTitle.trim() || 'Enlace adjunto'
-        }]);
+        };
+        const updatedList = [...myAttachments, newAtt];
+        setMyAttachments(updatedList);
+        await saveSubmissionToDB(updatedList);
+
         setLinkModalConfig(null);
         setLinkUrl('');
         setLinkTitle('');
     };
 
-    const handleAddDocument = () => {
+    const handleAddDocument = async () => {
         if (!docContent.trim()) return;
-        setMyAttachments([...myAttachments, {
+        const newAtt = {
             id: Date.now().toString(),
             type: 'document',
             content: docContent,
             title: docTitle.trim() || 'Documento sin título'
-        }]);
+        };
+        const updatedList = [...myAttachments, newAtt];
+        setMyAttachments(updatedList);
+        await saveSubmissionToDB(updatedList);
+
         setDocModalOpen(false);
         setDocTitle('');
         setDocContent('');
     };
 
-    const handleFileUpload = (e) => {
-        const file = e.target.files[0];
-        if (file) {
-            setMyAttachments([...myAttachments, {
-                id: Date.now().toString(),
-                type: 'upload',
-                title: file.name,
-                url: URL.createObjectURL(file) // Mock URL for preview
-            }]);
-            setLinkModalConfig(null);
-        }
+    const handleRemoveAttachment = async (attId) => {
+        const updatedList = myAttachments.filter(a => a.id !== attId);
+        setMyAttachments(updatedList);
+        await saveSubmissionToDB(updatedList);
     };
+
+
 
     const handleSendComment = async (e) => {
         e.preventDefault();
@@ -289,10 +308,6 @@ export default function TaskDetailView({ work, classroom, currentUser, onBack, a
                                             <i className="fas fa-plus text-xl text-blue-500"></i>
                                             <span className="text-[10px] font-medium tracking-tight mt-1">Crear</span>
                                         </button>
-                                        <button type="button" onClick={() => setLinkModalConfig({ type: 'upload' })} className="w-[4.5rem] h-[4.5rem] border border-stone-200 rounded-xl flex flex-col items-center justify-center gap-1 hover:bg-stone-50 transition-colors text-stone-600 shadow-sm">
-                                            <i className="fas fa-upload text-xl text-stone-400"></i>
-                                            <span className="text-[10px] font-medium tracking-tight mt-1">Subir</span>
-                                        </button>
                                         <button type="button" onClick={() => setLinkModalConfig({ type: 'link' })} className="w-[4.5rem] h-[4.5rem] border border-stone-200 rounded-xl flex flex-col items-center justify-center gap-1 hover:bg-stone-50 transition-colors text-stone-600 shadow-sm">
                                             <i className="fas fa-link text-xl text-stone-400"></i>
                                             <span className="text-[10px] font-medium tracking-tight mt-1">Vínculo</span>
@@ -371,32 +386,12 @@ export default function TaskDetailView({ work, classroom, currentUser, onBack, a
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-900/50 backdrop-blur-sm animate-fadeIn">
                     <div className="bg-white rounded-2xl w-full max-w-md shadow-xl p-6">
                         <h3 className="text-xl font-bold text-stone-800 mb-4 flex items-center gap-2">
-                            {linkModalConfig.type === 'drive' && <><img src="https://upload.wikimedia.org/wikipedia/commons/1/12/Google_Drive_icon_%282020%29.svg" alt="Drive" className="w-6 h-6" /> Añadir de Google Drive</>}
+                            {linkModalConfig.type === 'drive' && <><img src="https://upload.wikimedia.org/wikipedia/commons/1/12/Google_Drive_icon_%282020%29.svg" alt="Drive" className="w-6 h-6" /> Añadir enlace de Google Drive</>}
                             {linkModalConfig.type === 'youtube' && <><img src="https://upload.wikimedia.org/wikipedia/commons/0/09/YouTube_full-color_icon_%282017%29.svg" alt="YouTube" className="w-6 h-6" /> Añadir video de YouTube</>}
                             {linkModalConfig.type === 'link' && <><i className="fas fa-link text-stone-500"></i> Añadir enlace</>}
-                            {linkModalConfig.type === 'upload' && <><i className="fas fa-upload text-stone-500"></i> Subir archivo</>}
                         </h3>
                         
                         <div className="space-y-4">
-                            {(linkModalConfig.type === 'upload' || linkModalConfig.type === 'drive') && (
-                                <div className="border-2 border-dashed border-stone-300 rounded-xl p-8 flex flex-col items-center justify-center text-center hover:bg-stone-50 transition-colors">
-                                    <i className="fas fa-cloud-upload-alt text-4xl text-stone-400 mb-3"></i>
-                                    <p className="text-sm font-bold text-stone-600 mb-1">Arrastra tu archivo aquí</p>
-                                    <p className="text-xs text-stone-400 mb-4">o haz clic para explorar</p>
-                                    <input 
-                                        type="file" 
-                                        id="file-upload" 
-                                        className="hidden" 
-                                        onChange={handleFileUpload} 
-                                    />
-                                    <label 
-                                        htmlFor="file-upload" 
-                                        className="px-4 py-2 bg-stone-200 hover:bg-stone-300 text-stone-700 rounded-lg text-sm font-bold transition-colors cursor-pointer"
-                                    >
-                                        Explorar
-                                    </label>
-                                </div>
-                            )}
 
                             <div>
                                 <label className="block text-sm font-bold text-stone-700 mb-1">URL / Enlace</label>

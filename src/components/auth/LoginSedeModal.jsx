@@ -89,8 +89,6 @@ const LoginSedeModal = ({
                             </div>
                         </div>
 
-
-
                         <div>
                             <label className="block text-xs font-bold text-stone-500 uppercase mb-2">Contraseña</label>
                             <div className="relative">

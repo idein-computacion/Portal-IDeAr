@@ -72,33 +72,6 @@ const DashboardTab = ({
             {/* Accesos y Avisos */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 
-                {/* Campus Virtual */}
-                <div 
-                    onClick={() => setCurrentTab('campus')}
-                    className="bg-gradient-to-br from-indigo-900 via-indigo-800 to-purple-900 p-6 rounded-2xl shadow-xl border border-indigo-700 flex flex-col justify-between text-white cursor-pointer hover:shadow-2xl hover:-translate-y-1 transition-all duration-300 relative overflow-hidden group min-h-[250px]"
-                >
-                    <div className="absolute -bottom-6 -right-6 opacity-20 text-9xl transform group-hover:scale-110 group-hover:-rotate-12 transition-all duration-500 pointer-events-none">
-                        <i className="fas fa-graduation-cap"></i>
-                    </div>
-                    <div className="relative z-10 flex flex-col h-full justify-between">
-                        <div>
-                            <div className="w-12 h-12 bg-white/10 rounded-xl flex items-center justify-center mb-4 backdrop-blur-sm border border-white/20">
-                                <i className="fas fa-book-open text-2xl text-indigo-200"></i>
-                            </div>
-                            <h3 className="text-2xl font-black mb-2 tracking-tight">Campus Virtual</h3>
-                            <p className="text-indigo-200 text-sm font-medium leading-relaxed max-w-[90%]">
-                                Accede a tus aulas virtuales, publicaciones, tareas y material de estudio.
-                            </p>
-                        </div>
-                        <div className="flex items-center justify-between mt-6 pt-4 border-t border-indigo-700/50">
-                            <span className="text-sm font-bold tracking-wide text-indigo-100">Ingresar al Campus</span>
-                            <div className="w-8 h-8 rounded-full bg-indigo-600 flex items-center justify-center group-hover:bg-indigo-500 transition-colors shadow-inner">
-                                <i className="fas fa-arrow-right text-xs"></i>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
                 {/* Cartelera de Avisos */}
                 <div className="bg-white p-6 rounded-2xl shadow-sm border border-stone-100 flex flex-col min-h-[250px]">
                     <div className="flex items-center justify-between mb-6">
@@ -161,6 +134,33 @@ const DashboardTab = ({
                                 </div>
                             ))
                         )}
+                    </div>
+                </div>
+
+                {/* Campus Virtual */}
+                <div 
+                    onClick={() => setCurrentTab('campus')}
+                    className="bg-gradient-to-br from-indigo-900 via-indigo-800 to-purple-900 p-6 rounded-2xl shadow-xl border border-indigo-700 flex flex-col justify-between text-white cursor-pointer hover:shadow-2xl hover:-translate-y-1 transition-all duration-300 relative overflow-hidden group min-h-[250px]"
+                >
+                    <div className="absolute -bottom-6 -right-6 opacity-20 text-9xl transform group-hover:scale-110 group-hover:-rotate-12 transition-all duration-500 pointer-events-none">
+                        <i className="fas fa-graduation-cap"></i>
+                    </div>
+                    <div className="relative z-10 flex flex-col h-full justify-between">
+                        <div>
+                            <div className="w-12 h-12 bg-white/10 rounded-xl flex items-center justify-center mb-4 backdrop-blur-sm border border-white/20">
+                                <i className="fas fa-book-open text-2xl text-indigo-200"></i>
+                            </div>
+                            <h3 className="text-2xl font-black mb-2 tracking-tight">Campus Virtual</h3>
+                            <p className="text-indigo-200 text-sm font-medium leading-relaxed max-w-[90%]">
+                                Accede a tus aulas virtuales, publicaciones, tareas y material de estudio.
+                            </p>
+                        </div>
+                        <div className="flex items-center justify-between mt-6 pt-4 border-t border-indigo-700/50">
+                            <span className="text-sm font-bold tracking-wide text-indigo-100">Ingresar al Campus</span>
+                            <div className="w-8 h-8 rounded-full bg-indigo-600 flex items-center justify-center group-hover:bg-indigo-500 transition-colors shadow-inner">
+                                <i className="fas fa-arrow-right text-xs"></i>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>

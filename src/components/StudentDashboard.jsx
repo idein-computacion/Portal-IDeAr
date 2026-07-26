@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { ref, set, update } from 'firebase/database';
 import { rtdb } from '../config/firebase';
 import BoletinModal from './modals/BoletinModal';
@@ -165,6 +165,19 @@ export default function StudentDashboard({
         tutor: student.tutor || '',
         profilePic: student.profilePic || '',
     });
+
+    const hasCheckedProfile = React.useRef(false);
+
+    useEffect(() => {
+        if (!hasCheckedProfile.current && student) {
+            hasCheckedProfile.current = true;
+            if (!student.phone || !student.email) {
+                setActiveSection('ficha');
+                setEditMode(true);
+                addNotification('Por favor, completa tu correo electrónico y teléfono de contacto para mantenernos comunicados.', 'info');
+            }
+        }
+    }, [student, addNotification]);
 
     // Exam inscription
     const safeLevel = (student.level || student.taller || '').replace(/[.#$[\]/]/g, '_');

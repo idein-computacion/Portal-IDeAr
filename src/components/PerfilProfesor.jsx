@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { changePassword } from '../services/authService';
 import { ref, set, get, remove } from 'firebase/database';
 import { rtdb } from '../config/firebase';
 
@@ -13,6 +14,12 @@ function PerfilProfesor({ currentUser, profileUser, globalSede, setCurrentUser, 
     const [bio, setBio] = useState(profileUser?.bio || "");
     const [foto, setFoto] = useState(profileUser?.foto || "");
     const [saving, setSaving] = useState(false);
+    const [passActual, setPassActual] = useState("");
+    const [passNueva, setPassNueva] = useState("");
+    const [passConfirm, setPassConfirm] = useState("");
+    const [showPassActual, setShowPassActual] = useState(false);
+    const [showPassNueva, setShowPassNueva] = useState(false);
+    const [changingPass, setChangingPass] = useState(false);
 
     // Sync cuando cambia el profileUser (ej: admin cambia de sede)
     useEffect(() => {
@@ -255,13 +262,78 @@ function PerfilProfesor({ currentUser, profileUser, globalSede, setCurrentUser, 
                             </div>
                         </div>
 
-                        {/* Contraseña — gestionada por Firebase Auth */}
-                        <div>
-                            <label className="block text-xs font-bold text-stone-500 uppercase mb-2">Contraseña</label>
-                            <div className="flex items-center gap-3 pl-4 py-3 rounded-xl border border-stone-200 bg-stone-50/50">
-                                <i className="fas fa-shield-alt text-emerald-500"></i>
-                                <span className="text-sm text-stone-500">Gestionada por Firebase Auth — usa "Cambiar mi Contraseña" en Configuración</span>
+                        {/* Contraseña */}
+                        <div className="md:col-span-2">
+                            <label className="block text-xs font-bold text-stone-500 uppercase mb-2">Cambiar Contraseña</label>
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                <div className="relative">
+                                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-stone-400"><i className="fas fa-lock"></i></span>
+                                    <input
+                                        type={showPassActual ? "text" : "password"}
+                                        value={passActual}
+                                        onChange={(e) => setPassActual(e.target.value)}
+                                        placeholder="Contraseña actual"
+                                        className="w-full pl-11 pr-10 py-3 rounded-xl border border-stone-200 outline-none bg-stone-50/50 font-semibold focus:ring-2 focus:ring-orange-500 transition-all"
+                                    />
+                                    <button type="button" onClick={() => setShowPassActual(v => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-700 bg-transparent border-0 cursor-pointer">
+                                        <i className={`fas ${showPassActual ? 'fa-eye-slash' : 'fa-eye'}`}></i>
+                                    </button>
+                                </div>
+                                <div className="relative">
+                                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-stone-400"><i className="fas fa-key"></i></span>
+                                    <input
+                                        type={showPassNueva ? "text" : "password"}
+                                        value={passNueva}
+                                        onChange={(e) => setPassNueva(e.target.value)}
+                                        placeholder="Nueva contraseña"
+                                        className="w-full pl-11 pr-10 py-3 rounded-xl border border-stone-200 outline-none bg-stone-50/50 font-semibold focus:ring-2 focus:ring-orange-500 transition-all"
+                                    />
+                                    <button type="button" onClick={() => setShowPassNueva(v => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-700 bg-transparent border-0 cursor-pointer">
+                                        <i className={`fas ${showPassNueva ? 'fa-eye-slash' : 'fa-eye'}`}></i>
+                                    </button>
+                                </div>
+                                <div className="relative">
+                                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-stone-400"><i className="fas fa-check-circle"></i></span>
+                                    <input
+                                        type="password"
+                                        value={passConfirm}
+                                        onChange={(e) => setPassConfirm(e.target.value)}
+                                        placeholder="Confirmar nueva"
+                                        className={`w-full pl-11 pr-4 py-3 rounded-xl border outline-none bg-stone-50/50 font-semibold focus:ring-2 focus:ring-orange-500 transition-all ${
+                                            passConfirm && passNueva !== passConfirm ? 'border-rose-400 focus:ring-rose-400' : 'border-stone-200'
+                                        }`}
+                                    />
+                                </div>
                             </div>
+                            {passActual && (
+                                <div className="mt-2 flex justify-end">
+                                    <button
+                                        type="button"
+                                        disabled={changingPass || !passActual || !passNueva || passNueva !== passConfirm || passNueva.length < 6}
+                                        onClick={async () => {
+                                            if (passNueva.length < 6) { addNotification("La contraseña debe tener al menos 6 caracteres", "error"); return; }
+                                            if (passNueva !== passConfirm) { addNotification("Las contraseñas no coinciden", "error"); return; }
+                                            setChangingPass(true);
+                                            try {
+                                                await changePassword(passActual, passNueva);
+                                                addNotification("Contraseña actualizada con éxito", "success");
+                                                setPassActual(""); setPassNueva(""); setPassConfirm("");
+                                            } catch (err) {
+                                                if (err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential') {
+                                                    addNotification("La contraseña actual es incorrecta", "error");
+                                                } else {
+                                                    addNotification("Error: " + (err.message || ''), "error");
+                                                }
+                                            } finally {
+                                                setChangingPass(false);
+                                            }
+                                        }}
+                                        className="bg-amber-600 hover:bg-amber-700 disabled:bg-stone-200 disabled:text-stone-400 disabled:cursor-not-allowed text-white font-bold py-2 px-5 rounded-xl transition-all text-sm flex items-center gap-2 border-0 cursor-pointer"
+                                    >
+                                        {changingPass ? <><i className="fas fa-spinner fa-spin"></i> Cambiando...</> : <><i className="fas fa-key"></i> Confirmar cambio</>}
+                                    </button>
+                                </div>
+                            )}
                         </div>
 
                         {/* Teléfono */}

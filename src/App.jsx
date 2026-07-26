@@ -115,7 +115,7 @@ function App() {
     } = useFirebaseData(globalSede);
 
     const addNotification = (text, type = 'info') => {
-        const id = Date.now();
+        const id = Date.now() + Math.random();
         setNotifications(prev => [...prev, { id, text, type }]);
         setTimeout(() => {
             setNotifications(prev => prev.filter(n => n.id !== id));
@@ -238,15 +238,36 @@ function App() {
         try {
             // 1. INICIAR SESIÓN EN FIREBASE AUTH PRIMERO
             // (Para los alumnos, si no ingresaron contraseña, usamos su DNI como contraseña por defecto)
-            const loginPassword = pwd || username; 
-            
+            const loginPassword = pwd || username;
+
+            let loginResult;
             try {
-                await loginWithDni(username, loginPassword);
+                loginResult = await loginWithDni(username, loginPassword);
             } catch (authErr) {
                 console.error("Error Firebase Auth:", authErr);
                 addNotification("Credenciales incorrectas o usuario no registrado.", "error");
                 return;
             }
+
+            // Helper: actualiza el email de Firebase Auth al email real del usuario
+            // para que los resets de contraseña lleguen a su buzón real.
+            const syncRealEmail = async (realEmail) => {
+                if (!realEmail || !loginResult) return;
+                try {
+                    const idToken = await loginResult.user.getIdToken();
+                    const apiKey = import.meta.env.VITE_FIREBASE_API_KEY;
+                    await fetch(
+                        `https://identitytoolkit.googleapis.com/v1/accounts:update?key=${apiKey}`,
+                        {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ idToken, email: realEmail, returnSecureToken: false })
+                        }
+                    );
+                } catch (e) {
+                    // No crítico — ignorar silenciosamente
+                }
+            };
 
             // 2. UNA VEZ AUTENTICADO, LEEMOS RTDB PARA VERIFICAR SEDE Y ROL
             
@@ -273,6 +294,8 @@ function App() {
                 setAuthDni("");
                 setAuthPassword("");
                 setAuthNombre("");
+                // Sincronizar email real en Firebase Auth para que el reset de contraseña funcione
+                if (userData.email) syncRealEmail(userData.email);
                 return;
             }
 
@@ -299,6 +322,8 @@ function App() {
                     setAuthDni("");
                     setAuthPassword("");
                     setAuthNombre("");
+                    // Sincronizar email real en Firebase Auth para que el reset de contraseña funcione
+                    if (foundAlumno.email) syncRealEmail(foundAlumno.email);
                     return;
                 }
                 
@@ -348,6 +373,7 @@ function App() {
         const tutor = (formData.get("tutor") || "").trim();
         const address = (formData.get("address") || "").trim();
         const profilePic = formData.get("profilePic") || (editingStudent ? editingStudent.profilePic : "") || "";
+        const newPassword = (formData.get("password") || "").trim();
 
         if (!dni || !name || !fecha_inicio) {
             addNotification("DNI, Nombre y Fecha de Inicio son requeridos", "error");
@@ -389,11 +415,90 @@ function App() {
             fecha_baja: modalActive ? null : modalFechaBaja,
             historial_bajas: updatedBajas,
             profilePic,
+            // Mantener la contraseña actual si no se ingresó una nueva
+            ...(newPassword ? { password: newPassword } : editingStudent?.password ? { password: editingStudent.password } : {}),
             updatedAt: Date.now()
         };
 
         try {
             await set(ref(rtdb, `alumnos/${studentId}`), payload);
+
+            // Si se ingresó una nueva contraseña, actualizarla en Firebase Auth vía REST
+            if (newPassword) {
+                try {
+                    const apiKey = import.meta.env.VITE_FIREBASE_API_KEY;
+                    const authEmail = `${dni}@portal-idear.app`;
+
+                    // Intentar sign-in con TODAS las contraseñas posibles en cascada:
+                    // 1) La contraseña guardada previamente en RTDB
+                    // 2) El DNI (contraseña por defecto para alumnos nuevos)
+                    // 3) La nueva contraseña (por si ya fue aplicada antes y hay desincronización)
+                    const passwordCandidates = new Set();
+                    if (editingStudent?.password) passwordCandidates.add(editingStudent.password);
+                    passwordCandidates.add(dni);
+                    passwordCandidates.add(newPassword);
+
+                    let idToken = null;
+                    for (const candidate of passwordCandidates) {
+                        const signInRes = await fetch(
+                            `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${apiKey}`,
+                            {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ email: authEmail, password: candidate, returnSecureToken: true })
+                            }
+                        );
+                        if (signInRes.ok) {
+                            const data = await signInRes.json();
+                            idToken = data.idToken;
+                            break;
+                        }
+                    }
+
+                    if (idToken) {
+                        // Cuenta encontrada → actualizar contraseña
+                        await fetch(
+                            `https://identitytoolkit.googleapis.com/v1/accounts:update?key=${apiKey}`,
+                            {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ idToken, password: newPassword, returnSecureToken: false })
+                            }
+                        );
+                    } else {
+                        // Ninguna contraseña funcionó → intentar crear la cuenta nueva
+                        const signUpRes = await fetch(
+                            `https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=${apiKey}`,
+                            {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ email: authEmail, password: newPassword, returnSecureToken: false })
+                            }
+                        );
+                        if (!signUpRes.ok) {
+                            const errData = await signUpRes.json();
+                            const errMsg = errData?.error?.message || '';
+                            if (errMsg === 'EMAIL_EXISTS') {
+                                // Cuenta existe pero ninguna contraseña conocida funcionó.
+                                // Esto pasa cuando la contraseña fue cambiada directamente en Firebase Console
+                                // sin actualizar RTDB. No hay forma de resolver esto sin Admin SDK.
+                                addNotification(
+                                    `⚠️ No se pudo actualizar la contraseña de ${name}: la cuenta tiene una contraseña desconocida. Restablecela manualmente desde Firebase Console.`,
+                                    "error"
+                                );
+                            } else {
+                                addNotification("Alumno guardado, pero no se pudo crear la cuenta de acceso. Revisá la consola para más detalles.", "error");
+                                console.error('signUp error:', errData);
+                            }
+                        }
+                        // Si signUp OK → cuenta creada con la nueva contraseña ✅
+                    }
+                } catch (passErr) {
+                    console.error('Error inesperado actualizando contraseña en Firebase Auth:', passErr);
+                    addNotification("Hubo un error inesperado al actualizar la contraseña.", "error");
+                }
+            }
+
             addNotification("Alumno guardado con éxito", "success");
             setShowStudentModal(false);
             setEditingStudent(null);
@@ -1647,7 +1752,6 @@ function App() {
                         { id: "calificaciones", icon: "fa-star",              label: "Calificaciones" },
                         { id: "pagos",       icon: "fa-file-invoice-dollar",  label: "Cobros" },
                         { id: "alumnos",     icon: "fa-user-graduate",         label: "Alumnos" },
-                        { id: "perfil",      icon: "fa-user-circle",           label: "Mi Perfil" },
                     ].map(t => (
                         <button
                             key={t.id}
@@ -1670,7 +1774,6 @@ function App() {
                         { id: "calificaciones", icon: "fa-star",             label: "Notas" },
                         { id: "pagos",       icon: "fa-dollar-sign",          label: "Cobros" },
                         { id: "alumnos",     icon: "fa-users",                label: "Alumnos" },
-                        { id: "perfil",      icon: "fa-user-circle",          label: "Perfil" },
                     ].map(t => (
                         <button
                             key={t.id}
@@ -1827,19 +1930,13 @@ function App() {
                             sedes={sedes}
                             users={users}
                             currentUser={currentUser}
+                            profileUser={currentUser?.dni === 'admin' ? sedeProfesor : currentUser}
+                            setCurrentUser={setCurrentUser}
                         />
                     </div>
                 )}
 
-                {currentTab === "perfil" && (
-                    <PerfilProfesor 
-                        currentUser={currentUser}
-                        profileUser={currentUser?.dni === 'admin' ? sedeProfesor : currentUser}
-                        globalSede={globalSede}
-                        setCurrentUser={setCurrentUser}
-                        addNotification={addNotification}
-                    />
-                )}
+
             </main>
 
             {showStudentModal && (

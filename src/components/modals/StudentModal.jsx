@@ -245,6 +245,20 @@ const StudentModal = ({
                         </div>
                     </div>
 
+                    {/* Contraseña del Alumno */}
+                    <div className="bg-blue-50 border border-blue-100 rounded-2xl p-4">
+                        <label className="block text-xs font-bold text-blue-700 uppercase mb-1 flex items-center gap-2">
+                            <i className="fas fa-key"></i> Contraseña de acceso al Portal
+                        </label>
+                        <p className="text-[10px] text-blue-500 mb-2">Dejá en blanco para no cambiarla. Si el alumno olvidó su contraseña, ingresá una nueva aquí.</p>
+                        <input
+                            type="text"
+                            name="password"
+                            placeholder="Nueva contraseña (dejar vacío para no cambiar)"
+                            className="w-full p-3 rounded-xl border border-blue-200 outline-none bg-white font-semibold focus:ring-2 focus:ring-blue-400 text-sm"
+                        />
+                    </div>
+
                     <div className="pt-4 border-t border-stone-100 space-y-3">
                         <div className="flex items-center gap-3">
                             <input 

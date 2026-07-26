@@ -81,18 +81,7 @@ export default function CreateWorkModal({ type, classroom, topics, currentUser, 
         setLinkTitle('');
     };
 
-    const handleFileUpload = (e) => {
-        const file = e.target.files[0];
-        if (file) {
-            setAttachments([...attachments, {
-                id: Date.now().toString(),
-                type: 'upload',
-                title: file.name,
-                url: URL.createObjectURL(file) // Mock URL for preview
-            }]);
-            setLinkModalConfig(null);
-        }
-    };
+
 
     const handleAddDocument = () => {
         if (!docContent.trim()) return;
@@ -200,10 +189,6 @@ export default function CreateWorkModal({ type, classroom, topics, currentUser, 
                                 <button type="button" onClick={() => setDocModalOpen(true)} className="w-20 h-20 border border-stone-200 rounded-xl flex flex-col items-center justify-center gap-2 hover:bg-stone-50 transition-colors text-stone-600">
                                     <i className="fas fa-plus text-2xl text-blue-500"></i>
                                     <span className="text-xs">Crear</span>
-                                </button>
-                                <button type="button" onClick={() => setLinkModalConfig({ type: 'upload' })} className="w-20 h-20 border border-stone-200 rounded-xl flex flex-col items-center justify-center gap-2 hover:bg-stone-50 transition-colors text-stone-600">
-                                    <i className="fas fa-upload text-2xl text-stone-400"></i>
-                                    <span className="text-xs">Subir</span>
                                 </button>
                                 <button type="button" onClick={() => setLinkModalConfig({ type: 'link' })} className="w-20 h-20 border border-stone-200 rounded-xl flex flex-col items-center justify-center gap-2 hover:bg-stone-50 transition-colors text-stone-600">
                                     <i className="fas fa-link text-2xl text-stone-400"></i>
@@ -318,32 +303,12 @@ export default function CreateWorkModal({ type, classroom, topics, currentUser, 
                 <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-stone-900/50 backdrop-blur-sm animate-fadeIn">
                     <div className="bg-white rounded-2xl w-full max-w-md shadow-xl p-6">
                         <h3 className="text-xl font-bold text-stone-800 mb-4 flex items-center gap-2">
-                            {linkModalConfig.type === 'drive' && <><img src="https://upload.wikimedia.org/wikipedia/commons/1/12/Google_Drive_icon_%282020%29.svg" alt="Drive" className="w-6 h-6" /> Añadir de Google Drive</>}
+                            {linkModalConfig.type === 'drive' && <><img src="https://upload.wikimedia.org/wikipedia/commons/1/12/Google_Drive_icon_%282020%29.svg" alt="Drive" className="w-6 h-6" /> Añadir enlace de Google Drive</>}
                             {linkModalConfig.type === 'youtube' && <><img src="https://upload.wikimedia.org/wikipedia/commons/0/09/YouTube_full-color_icon_%282017%29.svg" alt="YouTube" className="w-6 h-6" /> Añadir video de YouTube</>}
                             {linkModalConfig.type === 'link' && <><i className="fas fa-link text-stone-500"></i> Añadir enlace</>}
-                            {linkModalConfig.type === 'upload' && <><i className="fas fa-upload text-stone-500"></i> Subir archivo</>}
                         </h3>
                         
                         <div className="space-y-4">
-                            {(linkModalConfig.type === 'upload' || linkModalConfig.type === 'drive') && (
-                                <div className="border-2 border-dashed border-stone-300 rounded-xl p-8 flex flex-col items-center justify-center text-center hover:bg-stone-50 transition-colors">
-                                    <i className="fas fa-cloud-upload-alt text-4xl text-stone-400 mb-3"></i>
-                                    <p className="text-sm font-bold text-stone-600 mb-1">Arrastra tu archivo aquí</p>
-                                    <p className="text-xs text-stone-400 mb-4">o haz clic para explorar</p>
-                                    <input 
-                                        type="file" 
-                                        id="file-upload" 
-                                        className="hidden" 
-                                        onChange={handleFileUpload} 
-                                    />
-                                    <label 
-                                        htmlFor="file-upload" 
-                                        className="px-4 py-2 bg-stone-200 hover:bg-stone-300 text-stone-700 rounded-lg text-sm font-bold transition-colors cursor-pointer"
-                                    >
-                                        Explorar
-                                    </label>
-                                </div>
-                            )}
 
                             <div>
                                 <label className="block text-sm font-bold text-stone-700 mb-1">URL / Enlace</label>

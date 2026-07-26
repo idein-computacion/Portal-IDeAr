@@ -3,6 +3,7 @@ import { ref, set, remove, get } from 'firebase/database';
 import { rtdb } from '../config/firebase';
 import { NIVELES } from '../data/seedData';
 import { createAuthUserWithoutSignIn, changePassword } from '../services/authService';
+import PerfilProfesor from './PerfilProfesor';
 
 
 function UserRow({ user, currentUser, addNotification }) {
@@ -72,7 +73,8 @@ function UserRow({ user, currentUser, addNotification }) {
     );
 }
 
-function Config({ configLevels, setConfigLevels, addNotification, globalSede, generalConfig, setGeneralConfig, sedes = [], users = [], currentUser = null }) {
+function Config({ configLevels, setConfigLevels, addNotification, globalSede, generalConfig, setGeneralConfig, sedes = [], users = [], currentUser = null, profileUser = null, setCurrentUser }) {
+    const [activeConfigTab, setActiveConfigTab] = useState('perfil');
     
     const handleSaveToFirebase = async (levelsToSave) => {
         try {
@@ -261,57 +263,62 @@ function Config({ configLevels, setConfigLevels, addNotification, globalSede, ge
     };
 
     return (
-        <>
-            <div className="bg-white p-6 rounded-3xl shadow-sm border border-stone-100 lg:col-span-2">
-                <h3 className="text-lg font-bold text-stone-800 mb-4 flex items-center gap-2">
-                    <i className="fas fa-dollar-sign text-orange-500"></i> Aranceles Vigentes Ciclo 2026 (Por Nivel / Curso)
-                </h3>
-                <p className="text-sm text-stone-400 mb-6">
-                    Establece los valores base sugeridos al registrar nuevos pagos según el nivel o curso del estudiante.
-                </p>
+        <div className="space-y-6">
+            <div className="flex bg-stone-100 p-1 rounded-2xl mb-6 overflow-x-auto hide-scrollbar gap-1">
+                <button
+                    onClick={() => setActiveConfigTab('perfil')}
+                    className={`flex-1 min-w-[120px] px-4 py-3 rounded-xl text-sm font-bold transition-all border-0 cursor-pointer flex items-center justify-center gap-2 ${activeConfigTab === 'perfil' ? 'bg-white text-amber-600 shadow-sm' : 'text-stone-500 hover:text-stone-700'}`}
+                >
+                    <i className="fas fa-user-circle"></i> Perfil
+                </button>
+                <button
+                    onClick={() => setActiveConfigTab('valores')}
+                    className={`flex-1 min-w-[120px] px-4 py-3 rounded-xl text-sm font-bold transition-all border-0 cursor-pointer flex items-center justify-center gap-2 ${activeConfigTab === 'valores' ? 'bg-white text-amber-600 shadow-sm' : 'text-stone-500 hover:text-stone-700'}`}
+                >
+                    <i className="fas fa-dollar-sign"></i> Valores
+                </button>
+                {currentUser?.sede?.includes("Leandro N. Alem") && (
+                    <>
+                        <button
+                            onClick={() => setActiveConfigTab('mesas')}
+                            className={`flex-1 min-w-[120px] px-4 py-3 rounded-xl text-sm font-bold transition-all border-0 cursor-pointer flex items-center justify-center gap-2 ${activeConfigTab === 'mesas' ? 'bg-white text-amber-600 shadow-sm' : 'text-stone-500 hover:text-stone-700'}`}
+                        >
+                            <i className="fas fa-gavel"></i> Mesas de Examen
+                        </button>
+                        <button
+                            onClick={() => setActiveConfigTab('sedes')}
+                            className={`flex-1 min-w-[120px] px-4 py-3 rounded-xl text-sm font-bold transition-all border-0 cursor-pointer flex items-center justify-center gap-2 ${activeConfigTab === 'sedes' ? 'bg-white text-amber-600 shadow-sm' : 'text-stone-500 hover:text-stone-700'}`}
+                        >
+                            <i className="fas fa-network-wired"></i> Sedes
+                        </button>
+                        <button
+                            onClick={() => setActiveConfigTab('profesores')}
+                            className={`flex-1 min-w-[120px] px-4 py-3 rounded-xl text-sm font-bold transition-all border-0 cursor-pointer flex items-center justify-center gap-2 ${activeConfigTab === 'profesores' ? 'bg-white text-amber-600 shadow-sm' : 'text-stone-500 hover:text-stone-700'}`}
+                        >
+                            <i className="fas fa-users-cog"></i> Profesores
+                        </button>
+                    </>
+                )}
+            </div>
 
-                <div className="bg-stone-50 border border-stone-100 rounded-2xl p-5 mb-6 flex flex-col md:flex-row gap-4 items-center">
-                    <div className="flex-1 w-full">
-                        <label className="block text-xs font-bold text-stone-500 uppercase mb-2">Profesor a Cargo de la Sede</label>
-                        <input 
-                            type="text"
-                            value={generalConfig?.profesor || ""}
-                            onChange={(e) => setGeneralConfig({ ...generalConfig, profesor: e.target.value })}
-                            placeholder="Ej. Prof. Juan Pérez"
-                            className="w-full p-3 rounded-xl border border-stone-200 outline-none bg-white font-semibold focus:ring-2 focus:ring-amber-500 transition-all"
-                        />
-                    </div>
-                    {currentUser && (
-                        <div className="mt-4 md:mt-0 pt-4 md:pt-6">
-                            <button 
-                                type="button"
-                                onClick={async () => {
-                                    const currentPass = prompt("Por seguridad, ingresa tu contraseña actual:");
-                                    if (!currentPass) return;
-                                    const newPass = prompt("Ingresa tu nueva contraseña (mínimo 6 caracteres):");
-                                    if (!newPass || newPass.trim() === "" || newPass.trim().length < 6) {
-                                        if (newPass) addNotification("La contraseña debe tener al menos 6 caracteres", "error");
-                                        return;
-                                    }
-                                    try {
-                                        await changePassword(currentPass, newPass.trim());
-                                        addNotification("Contraseña actualizada con éxito", "success");
-                                    } catch (err) {
-                                        console.error('Error cambiando contraseña:', err);
-                                        if (err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential') {
-                                            addNotification("La contraseña actual es incorrecta", "error");
-                                        } else {
-                                            addNotification("Error actualizando la contraseña: " + (err.message || ''), "error");
-                                        }
-                                    }
-                                }}
-                                className="w-full md:w-auto bg-stone-200 hover:bg-stone-300 text-stone-700 font-bold py-3 px-6 rounded-xl transition-all shadow-sm text-sm flex items-center justify-center gap-2"
-                            >
-                                <i className="fas fa-key"></i> Cambiar mi Contraseña
-                            </button>
-                        </div>
-                    )}
-                </div>
+            {activeConfigTab === 'perfil' && (
+                <PerfilProfesor 
+                    currentUser={currentUser} 
+                    profileUser={profileUser}
+                    globalSede={globalSede}
+                    setCurrentUser={setCurrentUser}
+                    addNotification={addNotification}
+                />
+            )}
+
+            {activeConfigTab === 'valores' && (
+                <div className="bg-white p-6 rounded-3xl shadow-sm border border-stone-100 lg:col-span-2">
+                    <h3 className="text-lg font-bold text-stone-800 mb-4 flex items-center gap-2">
+                        <i className="fas fa-dollar-sign text-orange-500"></i> Aranceles Vigentes Ciclo 2026 (Por Nivel / Curso)
+                    </h3>
+                    <p className="text-sm text-stone-400 mb-6">
+                        Establece los valores base sugeridos al registrar nuevos pagos según el nivel o curso del estudiante.
+                    </p>
 
                 {/* Formulario para agregar nuevo curso */}
                 <div className="bg-stone-50 border border-stone-100 rounded-2xl p-5 mb-6">
@@ -438,81 +445,77 @@ function Config({ configLevels, setConfigLevels, addNotification, globalSede, ge
                         Guardar Cambios
                     </button>
                 </div>
-            </div>
-
-            {/* ─── Inscripción a Mesas de Examen ─── */}
-            {currentUser?.sede?.includes("Leandro N. Alem") && (
-                <div className="bg-white p-6 rounded-3xl shadow-sm border border-stone-100 lg:col-span-2">
-                    <h3 className="text-lg font-bold text-stone-800 mb-1 flex items-center gap-2">
-                    <i className="fas fa-gavel text-emerald-600"></i> Inscripción a Mesas de Examen (Portal Alumno)
-                </h3>
-                <p className="text-sm text-stone-400 mb-5">
-                    Habilitá la inscripción a mesas de examen desde el portal del alumno. Los alumnos podrán inscribirse solo durante el período que definas.
-                </p>
-
-                <div className="bg-stone-50 border border-stone-100 rounded-2xl p-5 space-y-5">
-                    {/* Toggle habilitación */}
-                    <div className="flex items-center justify-between gap-4">
-                        <div>
-                            <p className="font-bold text-stone-700 text-sm">Inscripción habilitada</p>
-                            <p className="text-xs text-stone-400">Activa para que los alumnos puedan inscribirse desde su portal</p>
-                        </div>
-                        <button
-                            type="button"
-                            onClick={() => setGeneralConfig({ ...generalConfig, habilitarInscripcionMesas: !generalConfig?.habilitarInscripcionMesas })}
-                            className={`relative inline-flex h-7 w-14 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none ${generalConfig?.habilitarInscripcionMesas ? 'bg-emerald-500' : 'bg-stone-300'}`}
-                        >
-                            <span className={`inline-block h-6 w-6 transform rounded-full bg-white shadow transition-transform duration-200 ${generalConfig?.habilitarInscripcionMesas ? 'translate-x-7' : 'translate-x-0'}`}></span>
-                        </button>
-                    </div>
-
-                    {/* Fechas */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <div>
-                            <label className="block text-xs font-bold text-stone-500 uppercase mb-2">
-                                <i className="fas fa-calendar-plus mr-1 text-emerald-500"></i>Fecha de Inicio
-                            </label>
-                            <input
-                                type="date"
-                                value={generalConfig?.fechaInicioInscripcionMesas || ''}
-                                onChange={(e) => setGeneralConfig({ ...generalConfig, fechaInicioInscripcionMesas: e.target.value })}
-                                className="w-full p-3 rounded-xl border border-stone-200 outline-none bg-white font-semibold focus:ring-2 focus:ring-emerald-400 transition-all"
-                            />
-                        </div>
-                        <div>
-                            <label className="block text-xs font-bold text-stone-500 uppercase mb-2">
-                                <i className="fas fa-calendar-times mr-1 text-rose-500"></i>Fecha de Cierre
-                            </label>
-                            <input
-                                type="date"
-                                value={generalConfig?.fechaFinInscripcionMesas || ''}
-                                onChange={(e) => setGeneralConfig({ ...generalConfig, fechaFinInscripcionMesas: e.target.value })}
-                                className="w-full p-3 rounded-xl border border-stone-200 outline-none bg-white font-semibold focus:ring-2 focus:ring-rose-400 transition-all"
-                            />
-                        </div>
-                    </div>
-
-                    {/* Status indicator */}
-                    <div className={`rounded-xl p-3 text-sm font-semibold flex items-center gap-2 ${generalConfig?.habilitarInscripcionMesas ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' : 'bg-stone-100 text-stone-500'}`}>
-                        <i className={`fas ${generalConfig?.habilitarInscripcionMesas ? 'fa-check-circle text-emerald-500' : 'fa-lock text-stone-400'}`}></i>
-                        {generalConfig?.habilitarInscripcionMesas
-                            ? `Inscripción ACTIVA para los alumnos de ${globalSede}`
-                            : 'Inscripción deshabilitada — los alumnos no pueden inscribirse'}
-                    </div>
-
-                    <button
-                        type="button"
-                        onClick={() => handleSaveToFirebase(configLevels)}
-                        className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2.5 px-6 rounded-xl transition-all shadow-md text-sm cursor-pointer border-0 flex items-center gap-2"
-                    >
-                        <i className="fas fa-save"></i> Guardar Configuración de Mesas
-                    </button>
                 </div>
-            </div>
             )}
 
-            {globalSede === "Leandro N. Alem" && (
-                <>
+            {activeConfigTab === 'mesas' && currentUser?.sede?.includes("Leandro N. Alem") && (
+                <div className="bg-white p-6 rounded-3xl shadow-sm border border-stone-100 lg:col-span-2">
+                    <h3 className="text-lg font-bold text-stone-800 mb-1 flex items-center gap-2">
+                        <i className="fas fa-gavel text-emerald-600"></i> Inscripción a Mesas de Examen (Portal Alumno)
+                    </h3>
+                    <p className="text-sm text-stone-400 mb-5">
+                        Habilitá la inscripción a mesas de examen desde el portal del alumno. Los alumnos podrán inscribirse solo durante el período que definas.
+                    </p>
+
+                    <div className="bg-stone-50 border border-stone-100 rounded-2xl p-5 space-y-5">
+                        <div className="flex items-center justify-between gap-4">
+                            <div>
+                                <p className="font-bold text-stone-700 text-sm">Inscripción habilitada</p>
+                                <p className="text-xs text-stone-400">Activa para que los alumnos puedan inscribirse desde su portal</p>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setGeneralConfig({ ...generalConfig, habilitarInscripcionMesas: !generalConfig?.habilitarInscripcionMesas })}
+                                className={`relative inline-flex h-7 w-14 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none ${generalConfig?.habilitarInscripcionMesas ? 'bg-emerald-500' : 'bg-stone-300'}`}
+                            >
+                                <span className={`inline-block h-6 w-6 transform rounded-full bg-white shadow transition-transform duration-200 ${generalConfig?.habilitarInscripcionMesas ? 'translate-x-7' : 'translate-x-0'}`}></span>
+                            </button>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div>
+                                <label className="block text-xs font-bold text-stone-500 uppercase mb-2">
+                                    <i className="fas fa-calendar-plus mr-1 text-emerald-500"></i>Fecha de Inicio
+                                </label>
+                                <input
+                                    type="date"
+                                    value={generalConfig?.fechaInicioInscripcionMesas || ''}
+                                    onChange={(e) => setGeneralConfig({ ...generalConfig, fechaInicioInscripcionMesas: e.target.value })}
+                                    className="w-full p-3 rounded-xl border border-stone-200 outline-none bg-white font-semibold focus:ring-2 focus:ring-emerald-400 transition-all"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-bold text-stone-500 uppercase mb-2">
+                                    <i className="fas fa-calendar-times mr-1 text-rose-500"></i>Fecha de Cierre
+                                </label>
+                                <input
+                                    type="date"
+                                    value={generalConfig?.fechaFinInscripcionMesas || ''}
+                                    onChange={(e) => setGeneralConfig({ ...generalConfig, fechaFinInscripcionMesas: e.target.value })}
+                                    className="w-full p-3 rounded-xl border border-stone-200 outline-none bg-white font-semibold focus:ring-2 focus:ring-rose-400 transition-all"
+                                />
+                            </div>
+                        </div>
+
+                        <div className={`rounded-xl p-3 text-sm font-semibold flex items-center gap-2 ${generalConfig?.habilitarInscripcionMesas ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' : 'bg-stone-100 text-stone-500'}`}>
+                            <i className={`fas ${generalConfig?.habilitarInscripcionMesas ? 'fa-check-circle text-emerald-500' : 'fa-lock text-stone-400'}`}></i>
+                            {generalConfig?.habilitarInscripcionMesas
+                                ? `Inscripción ACTIVA para los alumnos de ${globalSede}`
+                                : 'Inscripción deshabilitada — los alumnos no pueden inscribirse'}
+                        </div>
+
+                        <button
+                            type="button"
+                            onClick={() => handleSaveToFirebase(configLevels)}
+                            className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2.5 px-6 rounded-xl transition-all shadow-md text-sm cursor-pointer border-0 flex items-center gap-2"
+                        >
+                            <i className="fas fa-save"></i> Guardar Configuración de Mesas
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            {activeConfigTab === 'sedes' && globalSede === "Leandro N. Alem" && (
                     <div className="bg-white p-6 rounded-3xl shadow-sm border border-stone-100 lg:col-span-2">
                         <h3 className="text-lg font-bold text-stone-800 mb-4 flex items-center gap-2">
                             <i className="fas fa-network-wired text-amber-600"></i> Gestión de Sedes y Sucursales (Administrador)
@@ -604,11 +607,13 @@ function Config({ configLevels, setConfigLevels, addNotification, globalSede, ge
                             </table>
                         </div>
                     </div>
+            )}
 
-                    <div className="bg-white p-6 rounded-3xl shadow-sm border border-stone-100 lg:col-span-2 mt-8">
-                        <h3 className="text-lg font-bold text-stone-800 mb-4 flex items-center gap-2">
-                            <i className="fas fa-users-cog text-amber-600"></i> Gestión de Profesores y Accesos (Administrador)
-                        </h3>
+            {activeConfigTab === 'profesores' && globalSede === "Leandro N. Alem" && (
+                <div className="bg-white p-6 rounded-3xl shadow-sm border border-stone-100 lg:col-span-2">
+                    <h3 className="text-lg font-bold text-stone-800 mb-4 flex items-center gap-2">
+                        <i className="fas fa-users-cog text-amber-600"></i> Gestión de Profesores y Accesos (Administrador)
+                    </h3>
                         <p className="text-sm text-stone-400 mb-6">
                             Administra las cuentas de acceso de los profesores del instituto. Puedes restablecer contraseñas o eliminar accesos de filiales.
                         </p>
@@ -706,11 +711,10 @@ function Config({ configLevels, setConfigLevels, addNotification, globalSede, ge
                                 </tbody>
                             </table>
                         </div>
-                     </div>
                     </div>
-                </>
+                </div>
             )}
-        </>
+        </div>
     );
 }
 

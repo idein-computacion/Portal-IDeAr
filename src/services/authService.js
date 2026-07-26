@@ -80,6 +80,8 @@ export const changePassword = async (currentPassword, newPassword) => {
     return updatePassword(user, newPassword);
 };
 
+
+
 /**
  * Crea un usuario en Firebase Auth sin afectar la sesión actual.
  * Usa la API REST de Firebase Auth para crear el usuario.

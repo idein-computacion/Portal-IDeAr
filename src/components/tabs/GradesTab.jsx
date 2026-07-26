@@ -33,7 +33,6 @@ const GradesTab = ({
     handlePromoteStudent,
     setHistorialStudent,
     setShowHistorialModal,
-    setBoletinStudent,
     setShowBoletin,
     NIVELES
 }) => {
