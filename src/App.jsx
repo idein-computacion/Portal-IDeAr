@@ -274,32 +274,32 @@ function App() {
             // A) Verificar si es un usuario de staff (profesor/director)
             const userRef = ref(rtdb, `usuarios/${username}`);
             const snapshot = await get(userRef);
+            let staffData = null;
 
             if (snapshot.exists()) {
                 const userData = snapshot.val();
                 const userSedes = userData.sede ? userData.sede.split(',').map(s => s.trim()) : [];
                 const hasAccess = userSedes.includes(tempSede) || userSedes.includes("Leandro N. Alem");
                 
-                if (!hasAccess) {
-                    await firebaseLogout();
-                    addNotification(`Tu usuario está registrado para: "${userData.sede}". No tienes acceso a "${tempSede}".`, "error");
+                if (hasAccess) {
+                    addNotification(`¡Bienvenido, Prof. ${userData.nombre}!`, "success");
+                    localStorage.setItem('idear_sede', tempSede);
+                    setGlobalSede(tempSede);
+                    setCurrentUser(userData);
+                    setTempSede(null);
+                    setAuthDni("");
+                    setAuthPassword("");
+                    setAuthNombre("");
+                    // Sincronizar email real en Firebase Auth para que el reset de contraseña funcione
+                    if (userData.email) syncRealEmail(userData.email);
                     return;
                 }
-
-                addNotification(`¡Bienvenido, Prof. ${userData.nombre}!`, "success");
-                localStorage.setItem('idear_sede', tempSede);
-                setGlobalSede(tempSede);
-                setCurrentUser(userData);
-                setTempSede(null);
-                setAuthDni("");
-                setAuthPassword("");
-                setAuthNombre("");
-                // Sincronizar email real en Firebase Auth para que el reset de contraseña funcione
-                if (userData.email) syncRealEmail(userData.email);
-                return;
+                // Si existe en /usuarios pero no tiene acceso a tempSede como staff,
+                // guardamos la info y permitimos buscar si es alumno en esta sede (ej: es profesor en Arroyo pero Alumno en Alem).
+                staffData = userData;
             }
 
-            // B) No es staff, buscar en alumnos
+            // B) No es staff en esta sede, buscar en alumnos
             const alumnosRef = ref(rtdb, 'alumnos');
             const alumnosSnap = await get(alumnosRef);
             if (alumnosSnap.exists()) {
@@ -326,8 +326,14 @@ function App() {
                     if (foundAlumno.email) syncRealEmail(foundAlumno.email);
                     return;
                 }
+
+                if (staffData) {
+                    await firebaseLogout();
+                    addNotification(`Tu usuario profesor está registrado para: "${staffData.sede}". No tienes acceso a "${tempSede}".`, "error");
+                    return;
+                }
                 
-                // Buscar si existe en otra sede
+                // Buscar si existe como alumno en otra sede
                 const alumnoOtraSede = Object.values(alumnosData).find(
                     a => a.dni === username && a.active !== false
                 );
@@ -336,6 +342,12 @@ function App() {
                     addNotification(`Tu DNI está registrado en la sede "${alumnoOtraSede.sede}", no en "${tempSede}".`, "error");
                     return;
                 }
+            }
+
+            if (staffData) {
+                await firebaseLogout();
+                addNotification(`Tu usuario profesor está registrado para: "${staffData.sede}". No tienes acceso a "${tempSede}".`, "error");
+                return;
             }
 
             await firebaseLogout();

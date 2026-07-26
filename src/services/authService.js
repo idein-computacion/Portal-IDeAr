@@ -111,7 +111,9 @@ export const createAuthUserWithoutSignIn = async (dni, password) => {
         const errorMessage = error?.error?.message || 'Error creando usuario';
         
         if (errorMessage === 'EMAIL_EXISTS') {
-            throw new Error('Ya existe una cuenta para este DNI');
+            // El usuario ya existe en Firebase Auth (ej: porque ya está registrado como Alumno en alguna sede).
+            // No es un error: permitimos guardar su registro como Profesor en RTDB. Su contraseña es su DNI.
+            return { email, existing: true };
         }
         if (errorMessage.startsWith('WEAK_PASSWORD')) {
             throw new Error('La contraseña debe tener al menos 6 caracteres');

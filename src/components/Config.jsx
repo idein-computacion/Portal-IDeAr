@@ -7,7 +7,7 @@ import PerfilProfesor from './PerfilProfesor';
 
 
 function UserRow({ user, currentUser, addNotification }) {
-    const [showPass] = useState(false);
+    const [showPass, setShowPass] = useState(false);
 
     const handleDelete = async () => {
         const userSedes = user.sede ? user.sede.split(',').map(s => s.trim()) : [];
@@ -49,8 +49,17 @@ function UserRow({ user, currentUser, addNotification }) {
             </td>
             <td className="py-3 px-3">
                 <div className="flex items-center gap-2 text-stone-500">
-                    <i className="fas fa-shield-alt text-emerald-500 text-xs"></i>
-                    <span className="text-xs">Firebase Auth</span>
+                    <span className="font-mono text-xs bg-stone-100 px-2.5 py-1 rounded-lg text-stone-700 font-bold">
+                        {showPass ? (user.pass || user.dni) : '••••••••'}
+                    </span>
+                    <button 
+                        type="button"
+                        onClick={() => setShowPass(!showPass)} 
+                        className="text-stone-400 hover:text-stone-600 text-xs p-1 cursor-pointer"
+                        title={showPass ? "Ocultar" : "Mostrar"}
+                    >
+                        <i className={`fas ${showPass ? 'fa-eye-slash' : 'fa-eye'}`}></i>
+                    </button>
                 </div>
             </td>
             <td className="py-3 px-3 text-center">
@@ -222,11 +231,11 @@ function Config({ configLevels, setConfigLevels, addNotification, globalSede, ge
         const formData = new FormData(e.target);
         const nombre = formData.get("newUserNombre").trim();
         const dni    = formData.get("newUserDni").trim();
-        const pass   = formData.get("newUserPass").trim();
         const sedesArray = formData.getAll("newUserSede");
         const sede = sedesArray.join(", ");
+        const pass = dni;
 
-        if (!nombre || !dni || !pass || sedesArray.length === 0) {
+        if (!nombre || !dni || sedesArray.length === 0) {
             addNotification("Todos los campos son obligatorios", "error");
             return;
         }
@@ -236,8 +245,8 @@ function Config({ configLevels, setConfigLevels, addNotification, globalSede, ge
             return;
         }
 
-        if (pass.length < 6) {
-            addNotification("La contraseña debe tener al menos 6 caracteres", "error");
+        if (dni.length < 6) {
+            addNotification("El DNI debe tener al menos 6 dígitos para usarse como contraseña", "error");
             return;
         }
 
@@ -248,11 +257,11 @@ function Config({ configLevels, setConfigLevels, addNotification, globalSede, ge
                 return;
             }
 
-            // Crear cuenta en Firebase Auth (sin afectar la sesión actual)
+            // Crear cuenta en Firebase Auth usando el DNI como contraseña (sin afectar la sesión actual)
             await createAuthUserWithoutSignIn(dni, pass);
 
-            // Guardar perfil en RTDB (SIN contraseña)
-            const newUser = { dni, nombre, sede };
+            // Guardar perfil en RTDB con la contraseña inicial (= DNI)
+            const newUser = { dni, nombre, sede, pass };
             await set(ref(rtdb, `usuarios/${dni}`), newUser);
             addNotification(`Usuario "${nombre}" creado con éxito para: ${sede}`, "success");
             e.target.reset();
@@ -622,10 +631,15 @@ function Config({ configLevels, setConfigLevels, addNotification, globalSede, ge
                         
                         {/* Formulario: Crear acceso de profesor */}
                         <div className="bg-amber-50 border border-amber-100 rounded-2xl p-5 mb-6">
-                            <h4 className="text-sm font-bold text-amber-800 mb-4 flex items-center gap-2">
-                                <i className="fas fa-user-plus text-amber-600"></i> Crear Acceso de Profesor
+                            <h4 className="text-sm font-bold text-amber-800 mb-4 flex items-center justify-between gap-2">
+                                <span className="flex items-center gap-2">
+                                    <i className="fas fa-user-plus text-amber-600"></i> Crear Acceso de Profesor
+                                </span>
+                                <span className="text-xs font-normal text-amber-700 bg-amber-100 px-2.5 py-1 rounded-full">
+                                    Contraseña inicial: DNI del profesor
+                                </span>
                             </h4>
-                            <form onSubmit={handleCreateUser} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 items-end">
+                            <form onSubmit={handleCreateUser} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 items-end">
                                 <div>
                                     <label className="block text-xs font-bold text-stone-500 uppercase mb-2">Nombre Completo</label>
                                     <input
@@ -637,21 +651,11 @@ function Config({ configLevels, setConfigLevels, addNotification, globalSede, ge
                                     />
                                 </div>
                                 <div>
-                                    <label className="block text-xs font-bold text-stone-500 uppercase mb-2">DNI (Usuario)</label>
+                                    <label className="block text-xs font-bold text-stone-500 uppercase mb-2">DNI (Usuario y Contraseña)</label>
                                     <input
                                         type="text"
                                         name="newUserDni"
                                         placeholder="Sin puntos"
-                                        className="w-full p-2.5 rounded-xl border border-stone-200 outline-none bg-white font-semibold focus:ring-2 focus:ring-amber-500 text-sm"
-                                        required
-                                    />
-                                </div>
-                                <div>
-                                    <label className="block text-xs font-bold text-stone-500 uppercase mb-2">Contraseña</label>
-                                    <input
-                                        type="text"
-                                        name="newUserPass"
-                                        placeholder="Contraseña inicial"
                                         className="w-full p-2.5 rounded-xl border border-stone-200 outline-none bg-white font-semibold focus:ring-2 focus:ring-amber-500 text-sm"
                                         required
                                     />
