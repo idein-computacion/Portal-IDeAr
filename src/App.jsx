@@ -233,48 +233,7 @@ function App() {
             return;
         }
 
-        const isAlemAdminSetup = tempSede === "Leandro N. Alem" && !hasAdmin;
 
-        if (isAlemAdminSetup) {
-            if (!authNombre.trim()) {
-                addNotification("Por favor, completa tu Nombre Completo", "error");
-                return;
-            }
-            if (!pwd) {
-                addNotification("Define una contraseña para el administrador", "error");
-                return;
-            }
-            if (pwd.length < 6) {
-                addNotification("La contraseña debe tener al menos 6 caracteres", "error");
-                return;
-            }
-            try {
-                // Crear usuario en Firebase Auth (esto también inicia sesión automáticamente)
-                await createAuthUser('admin', pwd);
-                // Guardar perfil en RTDB (sin contraseña en texto plano)
-                const adminUser = {
-                    dni: 'admin',
-                    nombre: authNombre.trim(),
-                    sede: "Leandro N. Alem",
-                    rol: 'Director'
-                };
-                // Al estar autenticado, la escritura será permitida por las reglas
-                await set(ref(rtdb, `usuarios/admin`), adminUser);
-                addNotification("Cuenta Administrador Principal inicializada correctamente", "success");
-                setHasAdmin(true);
-                localStorage.setItem('idear_sede', "Leandro N. Alem");
-                setGlobalSede("Leandro N. Alem");
-                setCurrentUser(adminUser);
-                setTempSede(null);
-                setAuthDni("");
-                setAuthPassword("");
-                setAuthNombre("");
-            } catch (err) {
-                console.error("Error registrando administrador:", err);
-                addNotification("Error registrando administrador: " + (err.message || ""), "error");
-            }
-            return;
-        }
 
         try {
             // 1. INICIAR SESIÓN EN FIREBASE AUTH PRIMERO

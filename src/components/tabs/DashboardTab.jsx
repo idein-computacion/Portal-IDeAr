@@ -69,21 +69,13 @@ const DashboardTab = ({
                 </div>
             </div>
 
-            {/* Tarjetas de Indicadores */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                <div className="bg-white p-6 rounded-2xl shadow-sm border border-stone-100 flex items-center gap-4">
-                    <div className="w-12 h-12 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center text-xl">
-                        <i className="fas fa-users"></i>
-                    </div>
-                    <div>
-                        <p className="text-xs text-stone-400 font-semibold uppercase">Matrícula Activa</p>
-                        <p className="text-2xl font-bold text-stone-800">{stats.totalAlumnos} alumnos</p>
-                    </div>
-                </div>
-
+            {/* Accesos y Avisos */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                
+                {/* Campus Virtual */}
                 <div 
                     onClick={() => setCurrentTab('campus')}
-                    className="bg-gradient-to-br from-indigo-900 via-indigo-800 to-purple-900 p-6 rounded-2xl shadow-xl border border-indigo-700 flex flex-col justify-between text-white cursor-pointer hover:shadow-2xl hover:-translate-y-1 transition-all duration-300 relative overflow-hidden group"
+                    className="bg-gradient-to-br from-indigo-900 via-indigo-800 to-purple-900 p-6 rounded-2xl shadow-xl border border-indigo-700 flex flex-col justify-between text-white cursor-pointer hover:shadow-2xl hover:-translate-y-1 transition-all duration-300 relative overflow-hidden group min-h-[250px]"
                 >
                     <div className="absolute -bottom-6 -right-6 opacity-20 text-9xl transform group-hover:scale-110 group-hover:-rotate-12 transition-all duration-500 pointer-events-none">
                         <i className="fas fa-graduation-cap"></i>
@@ -106,13 +98,9 @@ const DashboardTab = ({
                         </div>
                     </div>
                 </div>
-            </div>
 
-            {/* Avisos Institucionales y Alertador */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                
                 {/* Cartelera de Avisos */}
-                <div className="bg-white p-6 rounded-3xl shadow-sm border border-stone-100 flex flex-col">
+                <div className="bg-white p-6 rounded-2xl shadow-sm border border-stone-100 flex flex-col min-h-[250px]">
                     <div className="flex items-center justify-between mb-6">
                         <h3 className="text-lg font-bold text-stone-800 flex items-center gap-2">
                             <i className="fas fa-bullhorn text-amber-500"></i> Avisos y Novedades
@@ -175,9 +163,12 @@ const DashboardTab = ({
                         )}
                     </div>
                 </div>
+            </div>
 
+            {/* Alertas */}
+            <div className="grid grid-cols-1 gap-8">
                 {/* Alerta de Cuotas */}
-                <div className="bg-white p-6 rounded-3xl shadow-sm border border-stone-100">
+                <div className="bg-white p-6 rounded-2xl shadow-sm border border-stone-100">
                     <div className="flex items-center justify-between mb-4">
                         <h3 className="text-lg font-bold text-stone-800 flex items-center gap-2">
                             <i className="fas fa-bell text-rose-500"></i> Alerta de Cuotas

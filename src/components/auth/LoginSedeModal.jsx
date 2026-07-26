@@ -59,14 +59,10 @@ const LoginSedeModal = ({
                             Sede: {tempSede}
                         </span>
                         <h2 className="text-2xl font-extrabold mt-1">
-                            {tempSede === "Leandro N. Alem" && !hasAdmin 
-                                ? "Definir Acceso Administrador (Por única vez)" 
-                                : "Acceso a la Sede"}
+                            Acceso a la Sede
                         </h2>
                         <p className="text-xs text-stone-500 mt-1">
-                            {tempSede === "Leandro N. Alem" && !hasAdmin
-                                ? "No se ha configurado ningún administrador para Leandro N. Alem. Define el DNI, Nombre y Contraseña principal."
-                                : "Introduce tu usuario y contraseña personal de acceso."}
+                            Introduce tu usuario y contraseña personal de acceso.
                         </p>
                     </div>
 
@@ -93,24 +89,7 @@ const LoginSedeModal = ({
                             </div>
                         </div>
 
-                        {(tempSede === "Leandro N. Alem" && !hasAdmin) && (
-                            <div>
-                                <label className="block text-xs font-bold text-stone-500 uppercase mb-2">Nombre Completo</label>
-                                <div className="relative">
-                                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-stone-400">
-                                        <i className="fas fa-user"></i>
-                                    </span>
-                                    <input 
-                                        type="text"
-                                        placeholder="Nombre y Apellido"
-                                        value={authNombre}
-                                        onChange={(e) => setAuthNombre(e.target.value)}
-                                        className="w-full pl-11 pr-4 py-3 rounded-xl border border-stone-200 outline-none bg-stone-50/50 font-semibold focus:ring-2 focus:ring-orange-500 transition-all text-stone-800"
-                                        required
-                                    />
-                                </div>
-                            </div>
-                        )}
+
 
                         <div>
                             <label className="block text-xs font-bold text-stone-500 uppercase mb-2">Contraseña</label>
@@ -140,9 +119,7 @@ const LoginSedeModal = ({
                             ) : (
                                 <>
                                     <i className="fas fa-sign-in-alt"></i> 
-                                    {tempSede === "Leandro N. Alem" && !hasAdmin 
-                                        ? "Registrar Administrador Principal" 
-                                        : `Acceder a ${tempSede}`}
+                                    {`Acceder a ${tempSede}`}
                                 </>
                             )}
                         </button>
