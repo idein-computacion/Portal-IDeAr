@@ -1,5 +1,7 @@
 import React from 'react';
 import { formatDate } from '../../utils/formatters';
+import { enviarReciboPorWhatsApp } from '../../utils/receiptHelpers';
+import { MessageCircle } from 'lucide-react';
 
 /**
  * Pestaña de Cobros y Pagos.
@@ -21,7 +23,10 @@ const PaymentsTab = ({
     setPaymentFilter,
     setActiveReceipt,
     handleDeletePayment,
-    studentDebts
+    studentDebts,
+    configLevels,
+    globalSede,
+    generalConfig
 }) => {
     return (
         <div className="space-y-8 animate-fadeIn">
@@ -256,6 +261,16 @@ const PaymentsTab = ({
                                                     className="p-1.5 bg-stone-100 hover:bg-amber-500 hover:text-white text-stone-600 rounded-lg transition-all border-0 cursor-pointer"
                                                 >
                                                     <i className="fas fa-file-invoice"></i>
+                                                </button>
+                                                <button 
+                                                    onClick={() => {
+                                                        const student = students.find(s => s.id === p.studentId);
+                                                        enviarReciboPorWhatsApp(student, p, configLevels, students, globalSede, generalConfig);
+                                                    }}
+                                                    title="Enviar comprobante por WhatsApp"
+                                                    className="p-1.5 bg-emerald-50 hover:bg-emerald-600 hover:text-white text-emerald-600 rounded-lg transition-all border-0 cursor-pointer"
+                                                >
+                                                    <MessageCircle size={16} />
                                                 </button>
                                                 <button 
                                                     onClick={() => handleDeletePayment(p.id)}

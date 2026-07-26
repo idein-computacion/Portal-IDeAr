@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { formatDate } from '../../utils/formatters';
-import { getReceiptBreakdown } from '../../utils/receiptHelpers';
+import { getReceiptBreakdown, enviarReciboPorWhatsApp } from '../../utils/receiptHelpers';
 import ReminderPreviewModal from './ReminderPreviewModal';
+import { MessageCircle } from 'lucide-react';
 
 /**
  * Modal Visor de Recibo Oficial Alta Fidelidad.
@@ -265,6 +266,17 @@ const ReceiptModal = ({
                                 ) : (
                                     <><i className="fas fa-envelope"></i> Enviar Gmail</>
                                 )}
+                            </button>
+                        )}
+                        {!isStudent && (
+                            <button 
+                                onClick={() => {
+                                    const student = students.find(s => s.id === activeReceipt?.studentId);
+                                    enviarReciboPorWhatsApp(student, activeReceipt, configLevels, students, globalSede, generalConfig);
+                                }}
+                                className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-xl transition-all shadow-md flex items-center justify-center gap-2"
+                            >
+                                <MessageCircle size={18} /> Enviar por WhatsApp
                             </button>
                         )}
                     </div>

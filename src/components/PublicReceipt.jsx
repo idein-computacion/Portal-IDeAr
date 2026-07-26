@@ -1,11 +1,12 @@
 import React from 'react';
 import { formatDate } from '../utils/formatters';
+import { getReceiptBreakdown } from '../utils/receiptHelpers';
 
 /**
  * Vista Oficial de Recibo para el Público (acceso por URL hash /query param).
  * Extraído de App.jsx (líneas 2478–2547).
  */
-const PublicReceipt = ({ publicReceipt }) => {
+const PublicReceipt = ({ publicReceipt, configLevels = [], students = [], globalSede = 'Leandro N. Alem', generalConfig = {} }) => {
     const handleDownloadPublicReceipt = () => {
         const element = document.getElementById('public-receipt-print-area');
         if (window.html2pdf && element) {
@@ -31,66 +32,129 @@ const PublicReceipt = ({ publicReceipt }) => {
             <div className="w-full max-w-3xl flex flex-col items-center">
                 <h2 className="text-2xl font-black text-center text-stone-800 mb-6">Comprobante Oficial de Pago</h2>
                 
-                {/* CONTENEDOR OPTIMIZADO PARA A5 */}
+                {/* CONTENEDOR OPTIMIZADO PARA IMPRESIÓN OFICIAL */}
                 <div 
                     id="public-receipt-print-area" 
                     className="bg-white text-stone-900 p-6 sm:p-8 w-full shadow-2xl relative border-4 border-stone-200 rounded-[2rem]"
                     style={{ maxWidth: '148mm', minHeight: '105mm' }} 
                 >
-                    <div className="flex justify-between items-start border-b-2 pb-4 border-stone-200">
+                    {/* Encabezado Principal Recibo */}
+                    <div className="flex justify-between items-start border-b pb-4 border-stone-200">
                         <div className="flex flex-col items-center text-center">
-                            <img src="/logo.png" alt="Logo IDeAr" className="w-28 h-auto object-contain" />
+                            <img src="/logo.png" alt="Logo IDeAr" className="w-36 h-auto object-contain" />
                             <div className="mt-3">
-                                <p className="text-[10px] text-stone-500 font-bold uppercase tracking-wider">Instituto Para el Desarrollo del Arte</p>
-                                <p className="text-[10px] text-stone-400 mt-0.5">Reg. SPEPM N° 213/21</p>
+                                <h4 className="text-sm font-black tracking-tight text-amber-900">{generalConfig?.profesor || "SILVA GRACIELA BEATRIZ"}</h4>
+                                <p className="text-[10px] text-stone-500 font-semibold">Instituto Para el Desarrollo del Arte (IDeAr)</p>
+                                <p className="text-[10px] text-stone-600 font-bold mt-1">Sede: {globalSede}</p>
+                                <p className="text-[10px] text-stone-500 mt-2">Reg. SPEPM N° 213/21</p>
+                                <p className="text-[10px] text-stone-400 mt-2">Cataratas Del Iguazú 912 - Leandro N. Alem - Mnes.</p>
                             </div>
                         </div>
-                        <div className="text-right space-y-1.5">
-                            <div className="bg-stone-900 text-white font-black px-4 py-1.5 rounded-lg text-sm inline-block uppercase tracking-wider shadow-sm">
+                        <div className="text-right space-y-1">
+                            <div className="bg-stone-900 text-white font-black px-4 py-1.5 rounded-lg text-sm inline-block uppercase tracking-wider">
                                 Recibo X
                             </div>
-                            <p className="text-xs font-bold text-stone-700 pt-1">Nro: {publicReceipt.receiptNo}</p>
-                            <p className="text-[11px] text-stone-500 font-semibold">Fecha: {formatDate(publicReceipt.date)}</p>
-                            <p className="text-[9px] text-stone-400 font-bold italic pt-1">Documento no válido como Factura</p>
-                        </div>
-                    </div>
-                    
-                    <div className="bg-stone-50 p-4 rounded-xl border border-stone-200 mt-6 space-y-2">
-                        <p className="flex justify-between items-center text-xs">
-                            <span className="text-stone-500 font-bold uppercase">Alumno:</span>
-                            <span className="font-extrabold text-stone-900 text-sm">{publicReceipt.studentName}</span>
-                        </p>
-                        <p className="flex justify-between items-center text-xs">
-                            <span className="text-stone-500 font-bold uppercase">DNI:</span>
-                            <span className="font-bold text-stone-700">{publicReceipt.studentId}</span>
-                        </p>
-                    </div>
-                    
-                    <div className="mt-6 space-y-3">
-                        <div className="flex justify-between items-center py-2 border-b border-stone-100">
-                            <div>
-                                <p className="font-black text-stone-800 text-base">{publicReceipt.concept}</p>
-                                <p className="text-xs text-stone-500 mt-1 font-medium">Mes: {publicReceipt.period} | Vía: {publicReceipt.method}</p>
+                            <p className="text-xs font-bold text-stone-600 pt-1">Nro: {publicReceipt.receiptNo}</p>
+                            <p className="text-[10px] text-stone-400 font-semibold">Fecha: {formatDate(publicReceipt.date)}</p>
+                            
+                            <div className="pt-3 text-[10px] text-stone-500 font-medium space-y-1.5">
+                                <p>CUIT: 27-25496483-8</p>
+                                <p>Ingresos Brutos: 27-25496483-8</p>
+                                <p>Monotributista Responsable</p>
+                                <p className="font-bold text-stone-400 italic">Documento no válido como Factura</p>
                             </div>
-                            <span className="font-black text-stone-900 text-xl">${publicReceipt.amount.toLocaleString()}</span>
                         </div>
                     </div>
-                    
-                    <div className="mt-8 border-t-2 border-stone-200 pt-4 flex justify-between items-end">
-                        <span className="text-xs font-black uppercase text-stone-500 tracking-wider">Monto Total</span>
+
+                    {/* Datos del Alumno Receptor */}
+                    <div className="bg-stone-50 p-4 rounded-xl border border-stone-100 text-xs space-y-2 mt-6">
+                        <p className="flex justify-between">
+                            <span className="text-stone-400 font-bold uppercase text-[10px]">Alumno / Estudiante:</span>
+                            <span className="font-extrabold text-stone-800">{publicReceipt.studentName}</span>
+                        </p>
+                        <p className="flex justify-between">
+                            <span className="text-stone-400 font-bold uppercase text-[10px]">Identificación (DNI):</span>
+                            <span className="font-semibold text-stone-700">{publicReceipt.studentId}</span>
+                        </p>
+                    </div>
+
+                    {/* Detalle y Valores */}
+                    <div className="space-y-3 mt-6">
+                        <div className="flex justify-between text-xs font-bold text-stone-400 uppercase border-b pb-1">
+                            <span>Detalle del Servicio / Concepto</span>
+                            <span>Importe</span>
+                        </div>
+                        {getReceiptBreakdown(publicReceipt, configLevels, students).map((item, idx) => (
+                            <div key={idx} className="flex justify-between items-center text-sm py-1 border-b border-dashed border-stone-100 animate-fadeIn">
+                                <div>
+                                    <p className="font-bold text-stone-800">{item.label}</p>
+                                    <p className="text-[10px] text-stone-400">{item.subtitle}</p>
+                                </div>
+                                <span className={`font-semibold ${item.label.includes("Parte de pago") ? "text-emerald-700" : "text-stone-700"}`}>
+                                    ${item.amount.toLocaleString()}
+                                </span>
+                            </div>
+                        ))}
+                    </div>
+
+                    {/* Total Final */}
+                    <div className="border-t mt-6 pt-4 flex justify-between items-center">
+                        <span className="text-xs font-black uppercase text-stone-500">Monto Total Recibido</span>
                         <div className="text-right">
-                            <p className="text-3xl font-black text-amber-900">${publicReceipt.amount.toLocaleString()}</p>
-                            <p className="text-[10px] text-stone-400 font-medium italic mt-1">Expresado en pesos argentinos</p>
+                            <p className="text-2xl font-black text-amber-900">${publicReceipt.amount.toLocaleString()}</p>
+                            <p className="text-[9px] text-stone-400 italic">Expresado en pesos argentinos</p>
                         </div>
                     </div>
+
+                    {/* Información de Saldos y Deudas */}
+                    {(publicReceipt.periodBalance > 0 || publicReceipt.previousDebt > 0 || publicReceipt.balanceToDate !== undefined) && (
+                        <div className="bg-amber-50/60 border border-amber-200/50 rounded-xl p-3 text-xs space-y-1.5 mt-4 animate-fadeIn">
+                            {publicReceipt.periodBalance > 0 && (
+                                <div className="flex justify-between text-amber-900 font-semibold">
+                                    <span>Saldo pendiente de este período ({publicReceipt.period} {publicReceipt.date ? publicReceipt.date.substring(0, 4) : ''}):</span>
+                                    <span className="font-extrabold">${publicReceipt.periodBalance.toLocaleString()}</span>
+                                </div>
+                            )}
+                            {publicReceipt.balanceToDate !== undefined && (
+                                <div className="flex justify-between text-stone-700 font-bold border-t border-dashed border-stone-200 pt-1">
+                                    <span>Saldo total pendiente a la fecha:</span>
+                                    <span className="font-extrabold">${publicReceipt.balanceToDate.toLocaleString()}</span>
+                                </div>
+                            )}
+                            {publicReceipt.previousDebt > 0 && (
+                                <div className="flex justify-between text-rose-800 font-bold">
+                                    <span>⚠️ Recordatorio de Deuda Anterior Acumulada:</span>
+                                    <span className="font-extrabold">${publicReceipt.previousDebt.toLocaleString()}</span>
+                                </div>
+                            )}
+                        </div>
+                    )}
                 </div>
                 
-                <button 
-                    onClick={handleDownloadPublicReceipt}
-                    className="w-full max-w-sm mt-8 bg-amber-600 hover:bg-amber-700 text-white font-bold py-4 rounded-2xl transition-all shadow-xl flex items-center justify-center gap-3 text-lg border-0 cursor-pointer"
-                >
-                    <i className="fas fa-file-pdf text-2xl"></i> Descargar Comprobante
-                </button>
+                <div className="w-full max-w-sm mt-8 flex flex-col sm:flex-row gap-4">
+                    <button 
+                        onClick={handleDownloadPublicReceipt}
+                        className="flex-1 bg-amber-600 hover:bg-amber-700 text-white font-bold py-4 rounded-2xl transition-all shadow-xl flex items-center justify-center gap-2 text-base border-0 cursor-pointer"
+                    >
+                        <i className="fas fa-file-pdf text-xl"></i> Descargar
+                    </button>
+                    <button 
+                        onClick={() => { 
+                            try {
+                                window.close();
+                            } catch (e) {
+                                console.log(e);
+                            }
+                            // Si el navegador bloquea window.close(), redirigimos al inicio
+                            setTimeout(() => {
+                                window.location.replace('/');
+                            }, 300);
+                        }}
+                        className="flex-1 bg-stone-300 hover:bg-stone-400 text-stone-800 font-bold py-4 rounded-2xl transition-all shadow-xl flex items-center justify-center gap-2 text-base border-0 cursor-pointer"
+                    >
+                        <i className="fas fa-times text-xl"></i> Cerrar
+                    </button>
+                </div>
             </div>
         </div>
     );

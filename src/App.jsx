@@ -1502,7 +1502,13 @@ function App() {
     }, [selectedStudentDetail, activePayments, attendance, configLevels]);
 
     if (publicReceipt) {
-        return <PublicReceipt publicReceipt={publicReceipt} />;
+        return <PublicReceipt 
+            publicReceipt={publicReceipt}
+            configLevels={configLevels}
+            students={students}
+            globalSede={globalSede || "Leandro N. Alem"}
+            generalConfig={generalConfig}
+        />;
     }
 
     if (!globalSede) {
@@ -1825,6 +1831,9 @@ function App() {
                         setActiveReceipt={setActiveReceipt}
                         handleDeletePayment={handleDeletePayment}
                         studentDebts={studentDebts}
+                        configLevels={configLevels}
+                        globalSede={globalSede}
+                        generalConfig={generalConfig}
                     />
                 )}
 
