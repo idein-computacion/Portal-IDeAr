@@ -1,8 +1,8 @@
-import React from 'react';
+import React, { useState } from 'react';
+import ManualUsuarioModal from '../modals/ManualUsuarioModal';
 
 /**
- * Pestaña Dashboard / Panel.
- * Extraído de App.jsx (líneas 2870–3077).
+ * Pestaña Dashboard / Panel Principal.
  */
 const DashboardTab = ({
     currentUser,
@@ -23,9 +23,17 @@ const DashboardTab = ({
     configLevels,
     studentDebts
 }) => {
+    const [showManualModal, setShowManualModal] = useState(false);
+
     return (
         <div className="space-y-8 animate-fadeIn">
-            {/* Encabezado */}
+            {/* Modal Manual del Usuario */}
+            <ManualUsuarioModal 
+                isOpen={showManualModal} 
+                onClose={() => setShowManualModal(false)} 
+            />
+
+            {/* Encabezado Banner */}
             <div className="bg-gradient-to-r from-black via-orange-600 to-yellow-500 text-white rounded-3xl p-6 md:p-8 shadow-xl flex flex-col md:flex-row items-center justify-between gap-6 relative overflow-hidden">
                 <div 
                     className="absolute inset-0 z-0 opacity-100 mix-blend-overlay pointer-events-none"
@@ -47,8 +55,15 @@ const DashboardTab = ({
                             ¡Bienvenido al Portal Docente del Instituto IDeAr!
                         </h2>
                         <p className="text-orange-100 max-w-md drop-shadow text-sm">
-                            Accede de forma rápida a la gestión de tus estudiantes, clases y herramientas académicas. A continuación, encontrarás un resumen de la actividad de hoy.
+                            Accede de forma rápida a la gestión de tus estudiantes, clases y herramientas académicas.
                         </p>
+                        <button 
+                            onClick={() => setShowManualModal(true)}
+                            className="mt-2 bg-white/20 hover:bg-white/30 backdrop-blur-md text-white border border-white/30 px-4 py-2 rounded-xl text-xs font-extrabold transition-all shadow-md flex items-center gap-2 cursor-pointer w-fit mx-auto sm:mx-0"
+                        >
+                            <i className="fas fa-book-reader text-yellow-300 text-sm"></i>
+                            Manual del Usuario PDF
+                        </button>
                     </div>
                 </div>
                 <div className="flex items-center gap-6 relative z-10">
@@ -69,8 +84,8 @@ const DashboardTab = ({
                 </div>
             </div>
 
-            {/* Accesos y Avisos */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Accesos y Tarjetas Principales */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 
                 {/* Cartelera de Avisos */}
                 <div className="bg-white p-6 rounded-2xl shadow-sm border border-stone-100 flex flex-col min-h-[250px]">
@@ -137,7 +152,7 @@ const DashboardTab = ({
                     </div>
                 </div>
 
-                {/* Campus Virtual */}
+                {/* Campus Virtual Card */}
                 <div 
                     onClick={() => setCurrentTab('campus')}
                     className="bg-gradient-to-br from-indigo-900 via-indigo-800 to-purple-900 p-6 rounded-2xl shadow-xl border border-indigo-700 flex flex-col justify-between text-white cursor-pointer hover:shadow-2xl hover:-translate-y-1 transition-all duration-300 relative overflow-hidden group min-h-[250px]"
@@ -163,6 +178,34 @@ const DashboardTab = ({
                         </div>
                     </div>
                 </div>
+
+                {/* Manual del Usuario Card */}
+                <div 
+                    onClick={() => setShowManualModal(true)}
+                    className="bg-gradient-to-br from-stone-900 via-stone-800 to-black p-6 rounded-2xl shadow-xl border border-stone-800 flex flex-col justify-between text-white cursor-pointer hover:shadow-2xl hover:-translate-y-1 transition-all duration-300 relative overflow-hidden group min-h-[250px]"
+                >
+                    <div className="absolute -bottom-6 -right-6 opacity-20 text-9xl transform group-hover:scale-110 group-hover:-rotate-12 transition-all duration-500 pointer-events-none text-orange-500">
+                        <i className="fas fa-book-reader"></i>
+                    </div>
+                    <div className="relative z-10 flex flex-col h-full justify-between">
+                        <div>
+                            <div className="w-12 h-12 bg-white/10 rounded-xl flex items-center justify-center mb-4 backdrop-blur-sm border border-white/20">
+                                <i className="fas fa-book text-2xl text-orange-400"></i>
+                            </div>
+                            <h3 className="text-2xl font-black mb-2 tracking-tight">Manual del Usuario</h3>
+                            <p className="text-stone-300 text-sm font-medium leading-relaxed max-w-[90%]">
+                                Consulta el manual del sistema en PDF con guía paso a paso, funciones y permisos.
+                            </p>
+                        </div>
+                        <div className="flex items-center justify-between mt-6 pt-4 border-t border-stone-800">
+                            <span className="text-sm font-bold tracking-wide text-orange-400">Ver Documento PDF</span>
+                            <div className="w-8 h-8 rounded-full bg-orange-600 flex items-center justify-center group-hover:bg-orange-500 transition-colors shadow-inner">
+                                <i className="fas fa-file-pdf text-xs text-white"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
             </div>
 
             {/* Alertas */}
