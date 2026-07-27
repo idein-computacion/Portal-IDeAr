@@ -53,6 +53,11 @@
     "campus_entregas": {
       ".read": "auth != null",
       ".write": "auth != null"
+    },
+    "auditoria_logins": {
+      ".read": "auth != null",
+      ".write": "auth != null",
+      ".indexOn": ["timestamp"]
     }
   }
 }

@@ -269,6 +269,23 @@ function App() {
                 }
             };
 
+            // Helper: registra el login en la auditoría
+            const logLogin = async (userData, rol) => {
+                try {
+                    const loginId = `log_${Date.now()}_${username}`;
+                    await set(ref(rtdb, `auditoria_logins/${loginId}`), {
+                        id: loginId,
+                        dni: username,
+                        nombre: userData.nombre || userData.name || username,
+                        rol: rol,
+                        sede: tempSede,
+                        timestamp: Date.now()
+                    });
+                } catch (e) {
+                    console.error("Error logging login", e);
+                }
+            };
+
             // 2. UNA VEZ AUTENTICADO, LEEMOS RTDB PARA VERIFICAR SEDE Y ROL
             
             // A) Verificar si es un usuario de staff (profesor/director)
@@ -286,6 +303,7 @@ function App() {
                     localStorage.setItem('idear_sede', tempSede);
                     setGlobalSede(tempSede);
                     setCurrentUser(userData);
+                    logLogin(userData, 'Staff');
                     setTempSede(null);
                     setAuthDni("");
                     setAuthPassword("");
@@ -318,6 +336,7 @@ function App() {
                     localStorage.setItem('idear_sede', tempSede);
                     setGlobalSede(tempSede);
                     setCurrentUser(alumnoUser);
+                    logLogin(alumnoUser, 'Alumno');
                     setTempSede(null);
                     setAuthDni("");
                     setAuthPassword("");

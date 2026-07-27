@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import ManualUsuarioModal from '../modals/ManualUsuarioModal';
+import AuditoriaLoginsModal from '../modals/AuditoriaLoginsModal';
 
 /**
  * Pestaña Dashboard / Panel Principal.
@@ -24,6 +25,7 @@ const DashboardTab = ({
     studentDebts
 }) => {
     const [showManualModal, setShowManualModal] = useState(false);
+    const [showAuditoriaModal, setShowAuditoriaModal] = useState(false);
 
     return (
         <div className="space-y-8 animate-fadeIn">
@@ -32,6 +34,11 @@ const DashboardTab = ({
                 isOpen={showManualModal} 
                 onClose={() => setShowManualModal(false)} 
             />
+
+            {/* Modal de Auditoría de Accesos */}
+            {showAuditoriaModal && (
+                <AuditoriaLoginsModal onClose={() => setShowAuditoriaModal(false)} />
+            )}
 
             {/* Encabezado Banner */}
             <div className="bg-gradient-to-r from-black via-orange-600 to-yellow-500 text-white rounded-3xl p-6 md:p-8 shadow-xl flex flex-col md:flex-row items-center justify-between gap-6 relative overflow-hidden">
@@ -205,6 +212,35 @@ const DashboardTab = ({
                         </div>
                     </div>
                 </div>
+
+                {/* Auditoria Card (Solo Director) */}
+                {isDirector && (
+                    <div 
+                        onClick={() => setShowAuditoriaModal(true)}
+                        className="bg-gradient-to-br from-emerald-900 via-emerald-800 to-teal-900 p-6 rounded-2xl shadow-xl border border-emerald-700 flex flex-col justify-between text-white cursor-pointer hover:shadow-2xl hover:-translate-y-1 transition-all duration-300 relative overflow-hidden group min-h-[250px]"
+                    >
+                        <div className="absolute -bottom-6 -right-6 opacity-20 text-9xl transform group-hover:scale-110 group-hover:-rotate-12 transition-all duration-500 pointer-events-none text-emerald-400">
+                            <i className="fas fa-user-clock"></i>
+                        </div>
+                        <div className="relative z-10 flex flex-col h-full justify-between">
+                            <div>
+                                <div className="w-12 h-12 bg-white/10 rounded-xl flex items-center justify-center mb-4 backdrop-blur-sm border border-white/20">
+                                    <i className="fas fa-shield-alt text-2xl text-emerald-300"></i>
+                                </div>
+                                <h3 className="text-2xl font-black mb-2 tracking-tight">Auditoría de Accesos</h3>
+                                <p className="text-emerald-100 text-sm font-medium leading-relaxed max-w-[90%]">
+                                    Visualiza los usuarios que iniciaron sesión en el sistema durante la última semana.
+                                </p>
+                            </div>
+                            <div className="flex items-center justify-between mt-6 pt-4 border-t border-emerald-700/50">
+                                <span className="text-sm font-bold tracking-wide text-emerald-300">Ver Registros</span>
+                                <div className="w-8 h-8 rounded-full bg-emerald-600 flex items-center justify-center group-hover:bg-emerald-500 transition-colors shadow-inner">
+                                    <i className="fas fa-list text-xs text-white"></i>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
 
             </div>
 
